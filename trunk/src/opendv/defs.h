@@ -26,12 +26,12 @@
 #define OPENDV_DEFS_H_
 
 
-typedef enum {
+/*typedef enum {
   DVdisabled=0, DVreception,
   DVtxpreamble, DVtxstartdata, DVtxheader, DVtxvoice, DVtxvoicesync, DVtxdata, DVtxdatasync,
   DVtxlastframe, DVtxstop, DVtxemergency
 } tDV_State;
-
+*/
 
 typedef enum {
   DVsuccess, DVerror, DVbusy
@@ -41,6 +41,10 @@ typedef enum {
 typedef enum {
   DVnorx, DVsilence, DVrxheader, DVrxvoice
 } tDV_RXstate;
+
+typedef enum {
+  DVnotx, DVtxdelay, DVtxpreamble, DVtxheader, DVtxvoice, DVtxdata
+} tDV_TXstate;
 
 
 /*/ Receiver-State

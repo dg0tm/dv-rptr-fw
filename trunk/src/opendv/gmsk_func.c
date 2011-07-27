@@ -36,6 +36,7 @@
  *
  * Report:
  * 2011-07-01	TX-Delay / Modulator-Werte werden nicht mehr gmsk_init() auf Default gesetzt
+ * 2011-07-27	Duplex-Version, using 2 Timer
  */
 
 
@@ -51,8 +52,11 @@
 #include <intc.h>
 #include <dsp.h>
 
-#define GMSK_TIMER		AVR32_TC.channel[DV_TIMER_CH]
-#define GMSK_TIMER_IRQ		(AVR32_TC_IRQ0+DV_TIMER_CH)
+#define GMSK_RX_TIMER		AVR32_TC.channel[DVRX_TIMER_CH]
+#define GMSK_RX_TIMER_IRQ	(AVR32_TC_IRQ0+DVRX_TIMER_CH)
+
+#define GMSK_TX_TIMER		AVR32_TC.channel[DVTX_TIMER_CH]
+#define GMSK_TX_TIMER_IRQ	(AVR32_TC_IRQ0+DVTX_TIMER_CH)
 
 
 #define GMSK_SPSRATE		(GMSK_BITRATE*GMSK_BITSAMPLING)		// Receiver
@@ -139,30 +143,30 @@ static __inline void gmsk_nextdacval(volatile dsp16_t newval) {
 
 
 __inline void gmsk_stoptimer(void) {
-  GMSK_TIMER.ccr = AVR32_TC_CLKDIS_MASK;	// Stop Timer
-  GMSK_TIMER.idr = 0xFF;
-  GMSK_TIMER.sr;	// Clear Pending INT-Requests
+  GMSK_TX_TIMER.ccr = AVR32_TC_CLKDIS_MASK;	// Stop Timer
+  GMSK_TX_TIMER.idr = 0xFF;
+  GMSK_TX_TIMER.sr;				// Clear Pending INT-Requests
 }
 
 
 static __inline void gmsk_starttxdelay(void) {
   gmsk_stoptimer();
-  GMSK_TIMER.rc  = (((MASTERCLOCK+1)/2)*GMSK_TXDRESOLUTION+500)/1000;	// 1ms
-  GMSK_TIMER.ccr = AVR32_TC_SWTRG_MASK | AVR32_TC_CLKEN_MASK;
-  gmsk_bittimer  = gmsk_txdelay/GMSK_TXDRESOLUTION;
-  GMSK_TIMER.ier = AVR32_TC_CPCS_MASK;
+  GMSK_TX_TIMER.rc  = (((MASTERCLOCK+1)/2)*GMSK_TXDRESOLUTION+500)/1000;	// 1ms
+  GMSK_TX_TIMER.ccr = AVR32_TC_SWTRG_MASK | AVR32_TC_CLKEN_MASK;
+  gmsk_bittimer     = gmsk_txdelay/GMSK_TXDRESOLUTION;
+  GMSK_TX_TIMER.ier = AVR32_TC_CPCS_MASK;
 }
 
 
 
 INTERRUPT_FUNC gmsk_modulator_int(void) {
   //U16 dac_value;
-  GMSK_TIMER.sr;
+  GMSK_TX_TIMER.sr;
   //dac_value = (U16)modulator_out[gmsk_overcnt]+0x8000;
   //dac_transmit(dac_value >> 2);			// 14bit DATA only
   dac_modulate(modulator_out[gmsk_overcnt]);
   // Setting Timer-Period - modulate to a exact Baudrate
-  GMSK_TIMER.rc = GMSK_MOD_DEFAULT + gmsk_pll_accu.u16[0];
+  GMSK_TX_TIMER.rc = GMSK_MOD_DEFAULT + gmsk_pll_accu.u16[0];
   gmsk_pll_accu.u16[0] = 0;	// Clear Alternate-Bit
   gmsk_pll_accu.u32 += GMSK_MOD_PHASE;
 
@@ -191,7 +195,7 @@ INTERRUPT_FUNC gmsk_modulator_int(void) {
 	gmsk_bitlen = 0;
 	gmsk_bittimer = GMSK_POSTAMBLEBITS;
 	gmsk_alertpos = 0;
-	INTC_register_interrupt(&gmsk_runidle_int, GMSK_TIMER_IRQ, DV_MOD_INTPRIO);
+	INTC_register_interrupt(&gmsk_runidle_int, GMSK_TX_TIMER_IRQ, DV_MOD_INTPRIO);
 	mod_new = DAC_MIDDLE;
       } // esle "doch kein nächstes Paket"
       gmsk_nextdataptr = NULL;			// Datenzeiger
@@ -205,15 +209,14 @@ INTERRUPT_FUNC gmsk_modulator_int(void) {
       gmsk_reloadhandler();
     } // fi fast reload handler
   } // fi oversampling
-//  gpioß_clr(GMSK_DBG_PIN2);		// Test: shows clock recovery
 }
 
 
 INTERRUPT_FUNC gmsk_begin_int(void) {		// Starts Transfer after a TX-Delay
-  GMSK_TIMER.sr;
+  GMSK_TX_TIMER.sr;
   if (gmsk_bittimer==0) {
-    INTC_register_interrupt(&gmsk_modulator_int, GMSK_TIMER_IRQ, DV_MOD_INTPRIO);
-    GMSK_TIMER.rc = GMSK_MOD_DEFAULT;	// Periode
+    INTC_register_interrupt(&gmsk_modulator_int, GMSK_TX_TIMER_IRQ, DV_MOD_INTPRIO);
+    GMSK_TX_TIMER.rc = GMSK_MOD_DEFAULT;	// Periode
     gmsk_pllclk.u32 = GMSK_PLLDEFAULT;		// Set PLL-Clock to default
     gmsk_pll_accu.u32 = 0;
   } else {
@@ -362,7 +365,7 @@ dsp16_t dcd_clockval, dcd_levelval, dcd_value;
 // Funktion wird bei jeder Flanke aufgerufen und berechnet einen Wert für die DCD.
 static void gmsk_unlocked_fkt(S32 correction, int bits_since_lastcorr) {
   // Schnell hin zum NDG
-  GMSK_TIMER.rc += __builtin_sats(correction, 3, 10);//3-8
+  GMSK_RX_TIMER.rc += __builtin_sats(correction, 3, 10);//3-8
 }
 
 static void gmsk_sync_fkt(S32 correction, int bits_since_lastcorr) {
@@ -370,7 +373,7 @@ static void gmsk_sync_fkt(S32 correction, int bits_since_lastcorr) {
     Average32(demod_korr,  correction/bits_since_lastcorr, PLL_SYNC_KORR_FAK);
 //    gmsk_pllclk.u32 += demod_korr;
   }
-  GMSK_TIMER.rc += __builtin_sats(correction, 4, 7);//4-7
+  GMSK_RX_TIMER.rc += __builtin_sats(correction, 4, 7);//4-7
 }
 
 static void gmsk_locked_fkt(S32 correction, int bits_since_lastcorr) {
@@ -382,7 +385,7 @@ static void gmsk_locked_fkt(S32 correction, int bits_since_lastcorr) {
     // das ganze dann Average...
 //    gmsk_pllclk.u32 += demod_korr;
   }
-  GMSK_TIMER.rc += __builtin_sats(correction, 6, 6);
+  GMSK_RX_TIMER.rc += __builtin_sats(correction, 6, 6);
 }
 
 static void gmsk_faded_fkt(S32 correction, int bits_since_lastcorr) {
@@ -464,12 +467,12 @@ static void dcd_init(void) {
 
 INTERRUPT_FUNC gmsk_demodulator_int(void) {
   dsp16_t adc_val;
-  GMSK_TIMER.sr;				// Acknowledge IRQ
+  GMSK_RX_TIMER.sr;				// Acknowledge IRQ
   adc_val = HFIN << 4;				// Store last ADC (als 14 bit Wert)
   adc_startconversion();			// Start next ADC
 
   // Update Period-Length (PLL-Value for exact RX-Clock):
-  GMSK_TIMER.rc = gmsk_pllclk.u16[0] + gmsk_pll_accu.u16[0];
+  GMSK_RX_TIMER.rc = gmsk_pllclk.u16[0] + gmsk_pll_accu.u16[0];
   gmsk_pll_accu.u16[0] = 0;	// Clear Alternate-Bit
   gmsk_pll_accu.u32 += gmsk_pllclk.u16[1];
 
@@ -584,7 +587,7 @@ INTERRUPT_FUNC gmsk_demodulator_int(void) {
 
 INTERRUPT_FUNC gmsk_runidle_int(void) {
   //U16 dac_value;
-  GMSK_TIMER.sr;
+  GMSK_RX_TIMER.sr;
   //dac_value = (U16)modulator_out[gmsk_overcnt]+0x8000;
   //dac_transmit(dac_value >> 2);			// 14bit DATA only
   dac_modulate(modulator_out[gmsk_overcnt]);
@@ -597,8 +600,8 @@ INTERRUPT_FUNC gmsk_runidle_int(void) {
       // Gauss-Filter:
       dsp16_filt_fir(modulator_out, modulator_in, MOD_IN_SIZE, (dsp16_t *)GaussCoeffs, GaussCoeffsSize);
     } else {
-      GMSK_TIMER.rc = gmsk_txdelay;	// Warte TX-Delay nach Timer-STart
-      INTC_register_interrupt(&gmsk_begin_int, GMSK_TIMER_IRQ, DV_MOD_INTPRIO);
+      GMSK_RX_TIMER.rc = gmsk_txdelay;		// Warte TX-Delay nach Timer-STart
+      INTC_register_interrupt(&gmsk_begin_int, GMSK_TX_TIMER_IRQ, DV_MOD_INTPRIO);
       if (gmsk_nextbitlen==0) {			// Kein neues Paket
 	if (demod_syncstart_fkt != NULL) {	// set to Demod
 	  gmsk_demodulator_start();
@@ -624,7 +627,7 @@ INTERRUPT_FUNC gmsk_runidle_int(void) {
 
 
 void gmsk_transmit(unsigned long *data, unsigned int length_in_bits, unsigned int alertbitpos) {
-  if ((GMSK_TIMER.sr&AVR32_TC_CLKSTA_MASK) == 0)	{ // if clock not enabled
+  if ((GMSK_TX_TIMER.sr&AVR32_TC_CLKSTA_MASK) == 0)	{ // if clock not enabled
     gmsk_nextbitlen  = 0;
     gmsk_nextdataptr = NULL;
     gmsk_dataptr = (U32 *)data;
@@ -632,9 +635,8 @@ void gmsk_transmit(unsigned long *data, unsigned int length_in_bits, unsigned in
     gmsk_bitlen = length_in_bits;
     gmsk_alertpos = alertbitpos;
     dac_waitidle();
-    //dac_transmit((DAC_MIDDLE+0x8000) >> 2);	// Settle DAC to Middle
     dac_modulate(DAC_MIDDLE);
-    INTC_register_interrupt(&gmsk_begin_int, GMSK_TIMER_IRQ, DV_MOD_INTPRIO);
+    INTC_register_interrupt(&gmsk_begin_int, GMSK_TX_TIMER_IRQ, DV_MOD_INTPRIO);
     gmsk_starttxdelay();			// Start Timer (enable clock)
   } else if (gmsk_nextbitlen == 0) {
     gmsk_nextdataptr = (U32 *)data;
@@ -647,18 +649,13 @@ void gmsk_transmit(unsigned long *data, unsigned int length_in_bits, unsigned in
 void gmsk_modulator_stop(void) {
   gmsk_nextdataptr = NULL;
   gmsk_stoptimer();			// Stop Timer (Clock)
-  GMSK_TIMER.idr = 0xFF;
+  GMSK_TX_TIMER.idr = 0xFF;
   gmsk_reloadhandler = NULL;
   gmsk_alertpos = 0;
 }
 
 
 void gmsk_set_mod_hub(short int level) {
-  /*if (level > 0) {
-    if (level > (0x7FFF-abs(DAC_MIDDLE))) level = (0x7FFF-abs(DAC_MIDDLE));
-  } else {
-    if (level < (0x8000+abs(DAC_MIDDLE))) level = (0x8000+abs(DAC_MIDDLE));
-  }*/
   dac_one_val  = DAC_MIDDLE+level;
   dac_zero_val = DAC_MIDDLE-level;
 }
@@ -699,11 +696,11 @@ void gmsk_demodulator_start(void) {
   gmsk_stoptimer();
   demod_bitphasecnt = 0;
   gmsk_demod_unlock();
-  INTC_register_interrupt(&gmsk_demodulator_int, GMSK_TIMER_IRQ, DV_DEMOD_INTPRIO);
-  GMSK_TIMER.sr;
-  GMSK_TIMER.ier = AVR32_TC_CPCS_MASK;
-  GMSK_TIMER.rc  = GMSK_RCDEFAULT;	// SPS-Rate: Periode für ADC
-  GMSK_TIMER.ccr = AVR32_TC_SWTRG_MASK | AVR32_TC_CLKEN_MASK;
+  INTC_register_interrupt(&gmsk_demodulator_int, GMSK_RX_TIMER_IRQ, DV_DEMOD_INTPRIO);
+  GMSK_RX_TIMER.sr;
+  GMSK_RX_TIMER.ier = AVR32_TC_CPCS_MASK;
+  GMSK_RX_TIMER.rc  = GMSK_RCDEFAULT;	// SPS-Rate: Periode für ADC
+  GMSK_RX_TIMER.ccr = AVR32_TC_SWTRG_MASK | AVR32_TC_CLKEN_MASK;
 }
 
 
@@ -768,11 +765,9 @@ void gmsk_init(void) {
   gmsk_next_alertpos = 0;
   for (cnt=0; cnt<MOD_IN_SIZE; cnt++)	// Init mit Zero
 	modulator_in[cnt] = DAC_MIDDLE;
-//  gmsk_set_bandwidth(0);
-//  gmsk_set_txdelay(GMSK_STDTXDELAY);
   dcd_init();
   // *** Timer ***
-  GMSK_TIMER.cmr =  AVR32_TC_NONE << AVR32_TC_BSWTRG_OFFSET |
+  GMSK_RX_TIMER.cmr =  AVR32_TC_NONE << AVR32_TC_BSWTRG_OFFSET |
     AVR32_TC_NONE << AVR32_TC_BEEVT_OFFSET |
     AVR32_TC_NONE << AVR32_TC_BCPC_OFFSET |
     AVR32_TC_NONE << AVR32_TC_BCPB_OFFSET |
@@ -791,10 +786,13 @@ void gmsk_init(void) {
     0 << AVR32_TC_CLKI_OFFSET |
     AVR32_TC_TCCLKS_TIMER_CLOCK2 << AVR32_TC_TCCLKS_OFFSET;
 
-  GMSK_TIMER.rc = GMSK_RCDEFAULT;	// SPS-Rate: Periode für ADC
-  INTC_register_interrupt(&gmsk_demodulator_int, GMSK_TIMER_IRQ, DV_DEMOD_INTPRIO);
+  GMSK_RX_TIMER.rc = GMSK_RCDEFAULT;	// SPS-Rate: Periode für ADC
+#if (DVRX_TIMER_CH!=DVTX_TIMER_CH)
+  GMSK_TX_TIMER.cmr = GMSK_RX_TIMER.cmr;
+  GMSK_TX_TIMER.rc  = GMSK_RCDEFAULT;
+#endif
+  INTC_register_interrupt(&gmsk_demodulator_int, GMSK_RX_TIMER_IRQ, DV_DEMOD_INTPRIO);
   dac_waitidle();
-  //dac_transmit((DAC_MIDDLE+0x8000) >> 2);	// Settle DAC to Middle
   dac_modulate(DAC_MIDDLE);
 }
 

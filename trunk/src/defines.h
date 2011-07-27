@@ -41,15 +41,57 @@
  * Bugfixlevel   c - Increased with one or more bugfixes (at the same time)
  */
 
-#define RELEASE_STRING		"2011-07-26"
+#define RELEASE_STRING		"2011-07-27"	// Release Date
+
+
+#ifndef ASM_DEFINE
+
+
+#if __GNUC__
+
+#define PACKED_DATA     __attribute__((__packed__))
+#define ALIGNED_DATA	__attribute__ ((aligned(4)))
+
+#elif __ICCAVR32__
+
+#define PACKED_DATA
+#define ALIGNED_DATA	_Pragma("data_alignment=4")
+
+#endif
+
 
 
 typedef void (*tfunction)(void);	// void-void Functions generell
 
+// Serial (RS232) and USB-CDC (serial link) uses frame-based I/O beginning
+// with a start-identification
+#define FRAMESTARTID	0xD0		// RS232-Paket-Startzeichen
+#define PAKETBUFFERSIZE	(512+8)		// Maximum Size per Frame we can receive
 
-typedef enum {
-  OpUnknown, RequestReceive, Receiving, RequestTransmit, Transmitting
-} tOPmode;
+// Returncodes (first data in answer)
+#define NAK			15
+#define ACK			6
+
+#define PKT_PARAM_IDX		4
+
+// below: constuction of a frame:
+// 0xD0 <len> <cmd> <data> <crc>
+// <len> is a 16bit little endian
+typedef struct __attribute__((__packed__)) {
+  unsigned char		id;
+  unsigned short	len;
+  unsigned char		cmd;
+} tRS232pktHeader;
+
+typedef struct __attribute__((__packed__)) {
+  union {
+    tRS232pktHeader	head;
+    char		data[PAKETBUFFERSIZE];
+  };
+} tRS232paket;
+
+
+#endif
 
 
 #endif // DEFINES_H_
