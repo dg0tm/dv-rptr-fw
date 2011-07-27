@@ -46,9 +46,9 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-
+#define ASM_DEFINE
 #include "defines.h"
-
+#undef  ASM_DEFINE
 
 //! @{
 //! \verbatim

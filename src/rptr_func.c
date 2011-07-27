@@ -37,6 +37,7 @@
 
 #include "crc.h"
 #include "hw_defs.h"
+#include "gpio_func.h"
 
 #include "compiler.h"
 #include <string.h>
@@ -50,78 +51,73 @@
 
 
 
-static const unsigned long int preamble_dstar[5] = {
+static const unsigned long preamble_dstar[5] = {
   0x55555555, 0x55555555,
   0x55555555, 0x55555555,
   0x37050000
 };
 
-static const unsigned long int lastframe_dstar[2] = {
+static const unsigned long lastframe_dstar[2] = {
   0x55555555,
   0xC87A0000
 };
 #define DSTAR_LASTFRAMEBITSIZE_TX	64	// keep modulated at END
 
 
+// AMBE-no Voice Data (just silence)
+static const unsigned long SilenceFrame[3] = {
+  0x8e4fb8b0,	// ToDo Check!
+  0xd55f2ba0,
+  0xe8000000
+};
+
+
+
 // Globale Variablen für D-Star-Transmittions:
 
+unsigned int	RPTR_Flags;
+unsigned char	RPTR_RxFrameCount;
+
 tds_header DSTAR_HEADER = {		// Der zu sendende Header
-    flags:{0x00, 0x00, 0x00},
-    RPT2Call:"        ",
-    RPT1Call:"        ",
-    YourCall:"CQCQCQ  ",
-    MyCall  :"no Call ",
-#ifdef DVMODEM
-    MyCall2 :" C5 ",
-#elif DVATRX
-    MyCall2 :"ATRX",
-#else
-    MyCall2 :"FJN ",
-#endif
+  flags:{0x00, 0x00, 0x00},
+  RPT2Call:"        ",
+  RPT1Call:"        ",
+  YourCall:"CQCQCQ  ",
+  MyCall  :"no Call ",
+  MyCall2 :"RPTR",
 };
 
 static unsigned long	DStar_HeaderBS[DSTAR_HEADERBSBUFSIZE];	// D* Header Bitstream
 static unsigned long	DStar_RxHeader[DSTAR_HEADERBSBUFSIZE];	// Received Header Bitstream
 
-int		DStar_RxHeaderCnt;				// Counter RX-Hader
+#define	TxVoiceBufSize	25
+static tds_voicedata	DStar_TxVoice[TxVoiceBufSize];	// 0.5s Voicedata
 
-tDV_State	dvstate;
+unsigned int	TxVoice_RdPos, TxVoice_WrPos;
+
+
 tDV_RXstate	rxstate, last_rxstate;
+tDV_TXstate	txstate;
 
 unsigned int	DStar_PacketCounter;
 unsigned int	DStar_LostSyncCounter;		// Zähler, wie oft pro Durchgang Sync weg
-unsigned int	DStar_DataIdleCounter;
-unsigned char	DStar_NFstate;
 
 
-tds_voicedata	VoiceBuffer;			// D* Voice-Frame (Tx)
+tds_voicedata	*RxVoiceBuffer;			// Pointer to VoiceBuffer
 
-static char *slowdataptr;			// SlowData Sende-Bytes (auf 6er Block)
-static const char noDataFill[6] = "ffffff";	// keine Daten-Funktion definiert.
-// (Notfall-Funktion, normalerweise ist immer eine Fkt. zugeordnet)
-
-
-tSlowDataFrame 	RxDataFrames[2];		// Double-buffered Slow-Data Frame
-char		*DataRxBufPtr;
-int		RxD_rpos, RxD_wpos;
-
-tdstar_slowdatrxf	DStar_DataStream;
-tdstar_slowdattxf	DStar_DataTransmit;
-tdstar_function		DStar_Stophandler;
 
 //Sync and Slow-Data functions:
 
-void dstar_add_sync(tds_voicedata *dest) {
+void dstar_insert_sync(tds_voicedata *dest) {
   dest->data[0] = 0x55;
   dest->data[1] = 0x2D;
   dest->data[2] = 0x16;
 }
 
-char *dstar_add_data(tds_voicedata *dest, const char *DataBytes) {
-  dest->data[0] = (*DataBytes++) ^ 0x70;
-  dest->data[1] = (*DataBytes++) ^ 0x4F;
-  dest->data[2] = (*DataBytes++) ^ 0X93;
-  return (char *)DataBytes;
+void dstar_scramble_data(tds_voicedata *dest) {
+  dest->data[0] ^=  0x70;
+  dest->data[1] ^=  0x4F;
+  dest->data[2] ^=  0X93;
 }
 
 char *dstar_get_data(char *DataBuffer, const tds_voicedata *srcpkt) {
@@ -157,140 +153,66 @@ __inline void dstar_tx_stop(void) {
 // Handler-Funktionen
 void dstar_stopped(void) {
   gmsk_set_reloadfunc(NULL);
-//  dv_endtransmission(dvstate==DVtxemergency);
-  dvstate = DVreception;
+  disable_ptt();
 }
 
 
 void dstar_transmit_stopframe(void) {
   gmsk_set_reloadfunc(&dstar_stopped);
   dstar_tx_stop();
-  if (dvstate == DVtxemergency) {
-//    ambe_stop();
-  } else {
-//    ambe_standby();
-    dvstate = DVtxlastframe;
-  }
 }
 
 
 void dstar_transmit_voicedata(void) {
   int cycle = DStar_PacketCounter%DSTAR_SYNCINTERVAL;
-  //ambe_getvoice(VoiceBuffer.voice);
-  if ((dvstate!=DVtxvoice)&&(dvstate!=DVtxvoicesync)) {
-    gmsk_transmit(VoiceBuffer.packet, DSTAR_VOICEFRAMEBITSIZE, 1);
+  if (TxVoice_RdPos == TxVoice_WrPos) {	// no data left, flushed buffer!
+    gmsk_transmit((U32 *)&SilenceFrame, DSTAR_VOICEFRAMEBITSIZE, 1);
     gmsk_set_reloadfunc(&dstar_transmit_stopframe);
-  } else {			// kein Stop-Request...
+  } else {
+    unsigned long *voicedat = DStar_TxVoice[TxVoice_RdPos].packet;
+    TxVoice_RdPos = (TxVoice_RdPos+1) % TxVoiceBufSize;
     if (cycle==0) {		// Sync-Daten in SendeBuffer
-      dstar_add_sync(&VoiceBuffer);
-//      if (ambe_getstate()==AMBEencoding)	// AMBE arbeitet auch?
-        dvstate = DVtxvoicesync;
-//      else				// wenn nicht Aussendung abbrechen!
-//	dvstate = DVtxemergency;
+      dstar_insert_sync(&DStar_TxVoice[TxVoice_RdPos]);
     } else {
-      if (cycle & 0x01) {		// Odd-Frames? reload 6 databytes
-        dvstate = DVtxvoice;
-        if (DStar_DataTransmit != NULL)	// Funktion zugeordnet?
-	  slowdataptr = DStar_DataTransmit(DStar_PacketCounter);
-        else
-          slowdataptr = NULL;
-        if (slowdataptr == NULL) {	// Funktion hat keine User-Daten (idle)
-	  slowdataptr = (char *)noDataFill;
-        } // fi get IdleData
-      } // fi Nächster Stream-Block
-      slowdataptr = dstar_add_data(&VoiceBuffer, slowdataptr);
+      dstar_scramble_data(&DStar_TxVoice[TxVoice_RdPos]);
     } // esle
-    gmsk_transmit(VoiceBuffer.packet, DSTAR_FRAMEBITSIZE, DSTAR_FRAMEBITSIZE-DSTAR_BEFOREFRAMEENDS);
+    if (TxVoice_RdPos == TxVoice_WrPos) {	// last voice frame?
+      gmsk_transmit(voicedat, DSTAR_VOICEFRAMEBITSIZE, 1);
+      gmsk_set_reloadfunc(&dstar_transmit_stopframe);
+    } else {
+      gmsk_transmit(voicedat, DSTAR_FRAMEBITSIZE, DSTAR_FRAMEBITSIZE-DSTAR_BEFOREFRAMEENDS);
+    }
     DStar_PacketCounter++;
   }
 }
-
-
-void dstar_transmit_firstvoice(void) {
-/* if (ambe_packetcount()==0) {		// AMBE funktioniert nicht bzw. steckt im Sleep
-    gmsk_set_reloadfunc(&dstar_stopped);
-    dstar_tx_stop();
-    ambe_stop();
-    dvstate = DVtxemergency;
-  } else*/ if (dvstate==DVtxstop) {
-    gmsk_set_reloadfunc(&dstar_stopped);
-    dstar_tx_stop();
-//    ambe_standby();
-    dvstate = DVtxlastframe;
-  } else {
-//    ambe_getvoice(VoiceBuffer.voice);
-    dstar_add_sync(&VoiceBuffer);
-    gmsk_transmit(VoiceBuffer.packet, DSTAR_FRAMEBITSIZE, DSTAR_FRAMEBITSIZE-DSTAR_BEFOREFRAMEENDS);
-    DStar_PacketCounter = 1;
-    gmsk_set_reloadfunc(&dstar_transmit_voicedata);
-    dvstate = DVtxvoicesync;
-  } // fi
-}
-
-
-// D-Star: Transmit SlowData only (VoiceBuffer contains Silence)
-void dstar_transmit_slowdata(void) {
-  int cycle = DStar_PacketCounter%DSTAR_SYNCINTERVAL;
-  if ((dvstate!=DVtxdata)&&(dvstate!=DVtxdatasync)) {
-    gmsk_transmit(VoiceBuffer.packet, DSTAR_VOICEFRAMEBITSIZE, 1);
-    gmsk_set_reloadfunc(&dstar_transmit_stopframe);
-  } else {			// kein Stop-Request...
-    if (cycle==0) {		// Sync-Daten in SendeBuffer
-      dstar_add_sync(&VoiceBuffer);
-      dvstate = DVtxdatasync;
-    } else {
-      if (cycle & 0x01) {		// Odd-Frames? reload 6 databytes
-        dvstate = DVtxdata;
-        if (DStar_DataTransmit != NULL)	// Funktion zugeordnet?
-	  slowdataptr = DStar_DataTransmit(DStar_PacketCounter);
-        else
-          slowdataptr = NULL;
-        if (slowdataptr == NULL) {	// Funktion hat keine User-Daten (idle)
-	  slowdataptr = (char *)noDataFill;
-        } // fi get IdleData
-      } // fi Nächster Stream-Block
-      slowdataptr = dstar_add_data(&VoiceBuffer, slowdataptr);
-    } // esle
-    gmsk_transmit(VoiceBuffer.packet, DSTAR_FRAMEBITSIZE, DSTAR_FRAMEBITSIZE-DSTAR_BEFOREFRAMEENDS);
-//    if (ambe_getstate()==AMBEencoding) {	// AMBE arbeitet - Wechsel zu Normalbetrieb
-      dvstate = DVtxvoice;
-      gmsk_set_reloadfunc(&dstar_transmit_voicedata);
-//    } else if (DStar_PacketCounter==DStar_DataIdleCounter) {
-//      DStar_DataIdleCounter += 2;		// repeat it after 2 frames (40ms)
-//      dv_enddatatx();
-//    } // fi no new data
-    DStar_PacketCounter++;
-  }
-}
-
-
-void dstar_transmit_firstsdata(void) {
-  if (dvstate==DVtxstop) {
-    gmsk_set_reloadfunc(&dstar_stopped);
-    dstar_tx_stop();
-    dvstate = DVtxlastframe;
-  } else {
-    dstar_add_sync(&VoiceBuffer);
-    gmsk_transmit(VoiceBuffer.packet, DSTAR_FRAMEBITSIZE, DSTAR_FRAMEBITSIZE-DSTAR_BEFOREFRAMEENDS);
-    DStar_PacketCounter = 1;
-    DStar_DataIdleCounter = DSTAR_DATAIDLETIMEOUT;
-    gmsk_set_reloadfunc(&dstar_transmit_slowdata);
-    dvstate = DVtxdatasync;
-  } // fi
-}
-
 
 
 void dstar_transmit_header(void) {
   gmsk_transmit((U32 *)&DStar_HeaderBS, DSTAR_HEADEROUTBITSIZE, DSTAR_HEADEROUTBITSIZE-DSTAR_BEFOREFRAMEENDS);
   DStar_PacketCounter = 0;
-  if (dvstate==DVtxstartdata)
-    gmsk_set_reloadfunc(&dstar_transmit_firstsdata);
-  else
-    gmsk_set_reloadfunc(&dstar_transmit_firstvoice);
-  dvstate = DVtxheader;
+  gmsk_set_reloadfunc(&dstar_transmit_voicedata);
 }
 
+
+
+void dstar_restart_header(void) {
+  gmsk_set_reloadfunc(&dstar_transmit_header);	// unmittelbar Header hinter
+  gmsk_transmit((U32 *)&preamble_dstar[4], 15, 1);
+}
+
+void dstar_begin_new_tx(void) {
+  gmsk_set_reloadfunc(&dstar_restart_header);
+  dstar_tx_stop();
+}
+
+void dstar_break_current(void) {
+  if (TxVoice_RdPos == TxVoice_WrPos) {	// last voice frame?
+    gmsk_transmit((U32 *)&SilenceFrame, DSTAR_VOICEFRAMEBITSIZE, 1);
+  } else {
+    gmsk_transmit(DStar_TxVoice[TxVoice_RdPos].packet, DSTAR_VOICEFRAMEBITSIZE, 1);
+  }
+  gmsk_set_reloadfunc(&dstar_begin_new_tx);
+}
 
 
 
@@ -298,30 +220,18 @@ void dstar_transmit_header(void) {
 
 
 void dstar_receivedframe(void) {
-  char *SlowDataPtr;
-  DStar_PacketCounter++;
-  if (DStar_PacketCounter < 50) {
-//    ambe_putvoice(VoiceBuffer.voice);
-    gmsk_set_receivebuf(VoiceBuffer.packet, DSTAR_FRAMEBITSIZE);
-    if (DStar_PacketCounter < 21) {
-      SlowDataPtr  = DataRxBufPtr;
-      DataRxBufPtr = dstar_get_data(SlowDataPtr, &VoiceBuffer);
-      if (DStar_PacketCounter==20) {
-        RxD_wpos++;	// Inc NoOfWritePos
-        DataRxBufPtr = RxDataFrames[RxD_wpos&0x01];	// Select next Buffer
-      } // fi SlowData complete
-      // SlowData-Stream aufbereiten
-      if (DStar_DataStream != NULL) DStar_DataStream(SlowDataPtr, DStar_PacketCounter);
-    }
+  RPTR_RxFrameCount++;
+  if (RPTR_RxFrameCount < 50) {	// stopps rx if no sync
+    gmsk_set_receivebuf(RxVoiceBuffer->packet, DSTAR_FRAMEBITSIZE);
+    RPTR_Flags |= RPTR_RX_FRAME;
     rxstate = DVrxvoice;
-  } else {			// fi Valid Data
+  } else {				// fi Valid Data
+    RPTR_Flags |= RPTR_RX_LOST;
     rxstate = DVsilence;
-//    ambe_standby();		// warscheinich keine gültigen Daten mehr.
-    if (DStar_Stophandler != NULL) DStar_Stophandler();
   }
-  if ( (DStar_PacketCounter%21)==0 ) {	// Every 21 frame
-    if (dstar_syncpaket(&VoiceBuffer)) {
-      DStar_PacketCounter = 0;
+  if ( (RPTR_RxFrameCount%21)==0 ) {	// Every 21 frame
+    if (dstar_syncpaket(RxVoiceBuffer)) {
+      RPTR_RxFrameCount = 0;
     } else {
       DStar_LostSyncCounter++;
     }
@@ -330,24 +240,19 @@ void dstar_receivedframe(void) {
 
 
 void dstar_receivedframesync(void) {
-  gmsk_set_receivebuf(VoiceBuffer.packet, DSTAR_FRAMEBITSIZE);
+  gmsk_set_receivebuf(RxVoiceBuffer->packet, DSTAR_FRAMEBITSIZE);
   gmsk_set_receivefkt(&dstar_receivedframe);
-  DStar_PacketCounter = 0;
-  DataRxBufPtr = RxDataFrames[RxD_wpos&0x01];	// Select next Buffer
-//  ambe_decode();
-  dvstate = DVreception;
+  RPTR_RxFrameCount = 0;
+  RPTR_Flags |= RPTR_RX_SYNC;
 }
 
 
 void dstar_receivedhdr(void) {
-  gmsk_set_receivebuf(VoiceBuffer.packet, DSTAR_FRAMEBITSIZE);
+  gmsk_set_receivebuf(RxVoiceBuffer->packet, DSTAR_FRAMEBITSIZE);
   gmsk_set_receivefkt(&dstar_receivedframe);
-  DStar_PacketCounter = 0;
+  RPTR_RxFrameCount = 0;
   DStar_LostSyncCounter = 0;
-  DataRxBufPtr = RxDataFrames[0];
-  RxD_rpos = 0;
-  RxD_wpos = 0;
-  DStar_RxHeaderCnt++;
+  RPTR_Flags |= RPTR_RX_HEADER;
   rxstate = DVrxvoice;
 }
 
@@ -356,8 +261,7 @@ void dstar_receivedhdr(void) {
 void dstar_getrxheader(void) {
   gmsk_set_receivebuf(DStar_RxHeader, DSTAR_HEADEROUTBITSIZE);
   gmsk_set_receivefkt(&dstar_receivedhdr);
-//  ambe_decode();		// Time to Boot AMBE
-  dvstate = DVreception;
+  RPTR_Flags |= RPTR_RX_START;
   rxstate = DVrxheader;
 }
 
@@ -366,9 +270,8 @@ void dstar_getrxheader(void) {
 void dstar_gotstopframe(void) {
   gmsk_set_receivebuf(NULL, 0);
   gmsk_set_receivefkt(NULL);
-//  ambe_standby();
+  RPTR_Flags |= RPTR_RX_STOP;
   rxstate = DVsilence;
-  if (DStar_Stophandler != NULL) DStar_Stophandler();
 }
 
 //! @}
@@ -380,41 +283,30 @@ void dstar_gotstopframe(void) {
 
 // *** API Funktionen ***
 
-void dstar_init_data(void) {
+void dstar_update_header() {
   append_crc_ccitt_revers((char *)&DSTAR_HEADER, sizeof(tds_header));
   dstar_buildheader(DStar_HeaderBS, &DSTAR_HEADER);
-//  dstar_buildheader_sd(TxIdleFrame, &DSTAR_HEADER);
-  DStar_DataStream   = NULL;
-  DStar_DataTransmit = NULL;
-  DStar_Stophandler  = NULL;
+}
+
+
+void dstar_init_data(tds_voicedata *rxvoicedata) {
+  dstar_update_header();
+  RxVoiceBuffer = rxvoicedata;
+  RPTR_Flags = 0;
 }
 
 
 void dstar_init_hardware(void) {
-//  ambe_init();			// Init SSC for AMBE-data-transfers and AMBE I/O Buffer
-//  ambe_set_timeout(DSTAR_DECODE_TO);
   gmsk_init();			// Init (De)Modulator Timer
   rxstate      = DVnorx;
   last_rxstate = DVnorx;
-  dvstate      = DVdisabled;
 }
 
 
 void dstar_exit_hardware(void) {
   gmsk_exit();
-//  ambe_powerdown();
-  dvstate = DVdisabled;
 }
 
-
-tDV_returncode dstar_update_header() {
-  append_crc_ccitt_revers((char *)&DSTAR_HEADER, sizeof(tds_header));
-//  dstar_buildheader_sd(TxIdleFrame, &DSTAR_HEADER);
-  if ((dvstate != DVtxheader) && (dvstate != DVtxpreamble)) {
-    dstar_buildheader(DStar_HeaderBS, &DSTAR_HEADER);
-    return DVsuccess;
-  } else  return DVbusy;
-}
 
 
 void dstar_routeflags(void) {
@@ -478,84 +370,15 @@ void dstar_init_header(const tds_header *header) {
 }
 
 
-void dstar_standby(void) {
-  // stopp RX bis wieder Sync/Framesync.
-  if (dvstate==DVreception) {
-    gmsk_demodulator_start();
-  }
-/*  if (ambe_getstate() > AMBEpowerdown) {
-    ambe_standby();	// Standby
-    ambe_getnewstate();	// Sleep ist nicht "neu"
-  }*/
-}
-
-
-
 void dstar_receive(void) {
   gmsk_set_synchandler(&dstar_getrxheader, &dstar_gotstopframe, &dstar_receivedframesync);
-  if ((dvstate==DVdisabled)||(dvstate==DVreception)) {
-    gmsk_demodulator_start();
-    dvstate = DVreception;
-  } else {  // fi
-    dvstate = DVtxstop;		// Stop Transmission
-  } // esle
+  gmsk_demodulator_start();
   rxstate = DVsilence;
 }
 
 
-// später mit update_header (Übergabe)
-void dstar_transmit(void) {
-  if ((dvstate!=DVtxdata)&&(dvstate!=DVtxdatasync)) {	// Wechsel von Data
-    if (dvstate != DVdisabled) {
-      gmsk_stoptimer();
-    } // fi
-    dvstate = DVtxpreamble;			// erstmal, später synchron
-    gmsk_set_reloadfunc(&dstar_transmit_header);	// unmittelbar Header hinter
-    dstar_tx_preamble();				// die Preamble setzen
-  } // fi not tx data
-//  ambe_encode();			// Release AMBE2020 reset (enable function)
-  rxstate = DVnorx;
-}
-
-
-void dstar_transmit_data(void) {
-  if ((dvstate!=DVtxvoice)&&(dvstate!=DVtxvoicesync)) {	// Wechsel von Sprache
-    if (dvstate != DVdisabled) {
-      gmsk_stoptimer();
-    } // fi
-    dvstate = DVtxstartdata;			// Nach dem Header, nur Slow-Data ohne Voice
-    gmsk_set_reloadfunc(&dstar_transmit_header);	// unmittelbar Header hinter
-    dstar_tx_preamble();				// die Preamble setzen
-  } else {	// fi not sprache
-//    ambe_standby();
-    dvstate = DVtxdata;
-    gmsk_set_reloadfunc(&dstar_transmit_slowdata);	// unmittelbar Header hinter
-  } // esle
-//  ambe_getsilence(VoiceBuffer.voice);
-  rxstate = DVnorx;
-}
-
-
-int dstar_newheader(void) {
-  int rxres = (DStar_RxHeaderCnt);
-  DStar_RxHeaderCnt = 0;
-  return rxres;
-}
-
-
-unsigned long *dstar_getheader(void) {
-  return DStar_RxHeader;
-}
-
-
-int dstar_new_rxstate(void) {
-  return (last_rxstate != rxstate);
-}
-
-
-tDV_RXstate dstar_get_rxstate(void) {
-  last_rxstate = rxstate;
-  return rxstate;
+char *dstar_getheader(void) {
+  return (char *)DStar_RxHeader;
 }
 
 
@@ -564,27 +387,54 @@ int dstar_channel_idle(void) {
 }
 
 
-__inline int dstar_newrxSlowData(void) {
-  return RxD_wpos-RxD_rpos;	// returns NoOfReceived SlowData
+
+// später mit update_header (Übergabe)
+void dstar_transmit(void) {
+  TxVoice_RdPos = 0;
+  TxVoice_WrPos = 0;
+  if (is_pttactive()) {
+    gmsk_set_reloadfunc(&dstar_break_current);		// unmittelbar Header hinter EOT
+  } else {
+    enable_ptt();
+    gmsk_set_reloadfunc(&dstar_transmit_header);	// unmittelbar Header hinter
+    dstar_tx_preamble();				// die Preamble setzen
+  }
 }
 
-char *dstar_getrxSlowData(void) {
-  char *dataptr = RxDataFrames[RxD_rpos&0x01];
-  if (RxD_rpos!=RxD_wpos) RxD_rpos++;
-  return dataptr;
+
+void dstar_transmit_data(void) {
+  //DVnotx, DVtxdelay, DVtxpreamble, DVtxheader, DVtxvoice, DVtxdata
+  /*
+  if ((dvstate!=DVtxvoice)&&(dvstate!=DVtxvoicesync)) {	// Wechsel von Sprache
+    if (dvstate != DVdisabled) {
+      gmsk_stoptimer();
+    } // fi
+    dvstate = DVtxstartdata;			// Nach dem Header, nur Slow-Data ohne Voice
+    gmsk_set_reloadfunc(&dstar_transmit_header);	// unmittelbar Header hinter
+    dstar_tx_preamble();				// die Preamble setzen
+  } else {	// fi not sprache
+    dvstate = DVtxdata;
+    gmsk_set_reloadfunc(&dstar_transmit_slowdata);	// unmittelbar Header hinter
+  } // esle
+//  ambe_getsilence(VoiceBuffer.voice);
+  rxstate = DVnorx;
+  */
 }
 
-__inline void dstar_setslowdatarxfct(tdstar_slowdatrxf HandleFct) {
-  DStar_DataStream = HandleFct;
+
+void dstar_endtransmit(void) {
+
 }
 
-__inline void dstar_setslowdatatxfct(tdstar_slowdattxf HandleFct) {
-  DStar_DataTransmit = HandleFct;
+
+void dstar_addtxvoice(const tds_voicedata *buf) {
+  memcpy(&DStar_TxVoice[TxVoice_WrPos], buf, sizeof(tds_voicedata));
+  TxVoice_WrPos = (TxVoice_WrPos+1) % TxVoiceBufSize;
+  if (TxVoice_RdPos == TxVoice_WrPos) {	// overflow!!!
+    TxVoice_RdPos = (TxVoice_RdPos+1) % TxVoiceBufSize;
+  }
 }
 
-__inline void dstar_setstopfunction(tdstar_function HandleFct) {
-  DStar_Stophandler = HandleFct;
-}
 
 
 //! @}

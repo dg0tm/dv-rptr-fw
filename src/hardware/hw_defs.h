@@ -34,21 +34,15 @@
 #ifndef HW_DEFS_H_
 #define HW_DEFS_H_
 
-
 #if __GNUC__
 
 #define INTERRUPT_FUNC	__attribute__((__interrupt__)) static void
-#define PACKED_DATA     __attribute__((__packed__))
-#define ALIGNED_DATA	__attribute__ ((aligned(4)))
 
 #elif __ICCAVR32__
 
 #define INTERRUPT_FUNC	__interrupt static void
-#define PACKED_DATA
-#define ALIGNED_DATA	_Pragma("data_alignment=4")
 
 #endif
-
 
 
 // PDCA Channels for AMBE:
@@ -77,17 +71,12 @@
 #define TWI_INTPRIO		AVR32_INTC_INT0
 
 // GMSK Timer + Ints
-#define DV_TIMER_CH		0
-#define DV_MOD_INTPRIO		AVR32_INTC_INT2
+#define DVRX_TIMER_CH		0
+#define DVTX_TIMER_CH		1
+#define IDLE_TIMER_CH		1		// statt Transmit
+
+#define DV_MOD_INTPRIO		AVR32_INTC_INT1
 #define DV_DEMOD_INTPRIO	AVR32_INTC_INT2
-
-#define AMBE_TIMER_CH		1
-#define AMBE_TIMER_PRIO		AVR32_INTC_INT0
-
-#define IDLE_TIMER_CH		1	// gleich AMBE-Timer, da nie zusammen ben.
-
-#define BFBUS_TIMER_CH		2	// später andere Lösung!
-
 
 #define MASTERCLOCK		60000000L
 
