@@ -76,47 +76,6 @@ __inline unsigned int gpio1_readpin(unsigned int pin) {
 
 
 
-
-void cpld_config(tcpldmode mode) {
-  cpld_stop();				// Switch in Config / Reset
-  gpio0_set(CPLDRKTKDIR_PIN);		// Set Channel-Clock to Codec-Clock
-  // Note: TK is Input too. Otherwise TK is output (clock must be generate)
-#ifdef SSC_TFDIRECTION
-  #if (SSC_TFDIRECTION==1)
-  gpio0_set(CPLDTFDIR_PIN);		// Set TF Pin as Input, Internal Connect To RF
-  #else
-  gpio0_clr(CPLDTFDIR_PIN);		// Set TF Pin as Output, AVR32 must generate this
-  #endif
-#else
-  gpio0_clr(CPLDTFDIR_PIN);		// Set TF Pin as Output, AVR32 must generate this
-#endif
-  switch (mode) {
-  case CPLDdisabled:
-    // This mode don't exist in Hardware V0.9PT - set to AMBE
-    gpio1_clr(CPLDCFG0_PIN);
-    gpio1_clr(CPLDCFG1_PIN);
-    gpio0_clr(CPLDRKTKDIR_PIN);	// Slip Disable
-    break;
-  case CPLDcfg_ambeact:
-    gpio1_clr(CPLDCFG1_PIN);	// RF-Pin is Input (from AMBE STRB) to transfer DATA
-    gpio1_set(CPLDCFG0_PIN);	// "01"
-    // AMBE2020 starts after aprox. 95ms + 8ms
-    break;
-  case CPLDcfg_codec:
-    gpio1_clr(CPLDCFG0_PIN);	// RF-Pin is Input (connected to Codec-SDOFS)
-    gpio1_set(CPLDCFG1_PIN);
-    break;
-  case CPLDcfg_ambepas:		// recommended mode
-    gpio1_set(CPLDCFG1_PIN);	// RF-Pin used as Output to transfer DATA
-    gpio1_set(CPLDCFG0_PIN);	// "11"
-    gpio0_clr(CPLDTFDIR_PIN);	// BUGFIX CPLD -> TF is Zero
-    // AMBE2020 starts after aprox. 95ms + 8ms
-    break;
-  };
-}
-
-
-
 __inline void watchdog(void) {
   if (Get_system_register(AVR32_COUNT)&0x01000000) {
     gpio0_set(WATCHDOG_PIN);	// toggle external Watchdog in slow freq.
@@ -156,9 +115,11 @@ void init_hardware(void) {
   AVR32_PM.mcctrl  = AVR32_PM_MCSEL_PLL0|AVR32_PM_MCCTRL_OSC0EN_MASK;
   AVR32_PM.pbamask = PBAMASK_NEEDED;
   AVR32_PM.pbbmask = PBBMASK_NEEDED;
-  cpld_config(CPLDdisabled);
-  cpld_start();
+
+  // Test DV-ATRX Target
+  enable_extdemod();
 }
+
 
 
 #define PLL_96MHZ_VALUE	0x2007010d		// 96MHz/2 -> 48MHz for USB
