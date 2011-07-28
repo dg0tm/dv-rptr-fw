@@ -31,11 +31,13 @@
  *
  * Report:
  * 2011-07-26 V0.01  Erstes Firmware-Release
+ * 2011-07-28 V0.02  Empfang -> D0-Pakete funktioniert nun. TX nicht getestet.
  *
  *
  * ToDo:
- * ALL!!! This Version is only a sum of files, copied from DV-Firmware to
- * build a new (smaller) project for DV-RPTR
+ * - first SYNC detect -> Message (early switch on Transceiver)
+ * - testing transmit-logic
+ * - configuration: Hotspot/Repeater, TXDelay, Modulation-Vss ...
  */
 
 
@@ -73,10 +75,10 @@ typedef struct PACKED_DATA {
 } theadrpcdata;
 
 typedef struct PACKED_DATA {
-  tRS232pktHeader	head;
+  tRS232pktHeader	head;		// 4byte
+  tds_voicedata		DVdata;		// KEEP DVdata aligend!!!
   unsigned char		rxid;
   unsigned char		pktcount;
-  tds_voicedata		DVdata;
   unsigned short	crc;
 } tvoicepcdata;
 
@@ -104,15 +106,16 @@ tfunction	data_flushrx	= cdc_flushrx;
 tRS232paket	rxdatapacket;	// data from pc/gateway received
 tRS232paket	answer;		// data to reply (get cmds)
 
-tctrlpcdata	ctrldata;
-theadrpcdata	headerdata;
-tvoicepcdata	voicedata;	// Voice+Slowdata from HF
+ALIGNED_DATA tctrlpcdata	ctrldata;
+ALIGNED_DATA theadrpcdata	headerdata;
+// caution: voicedata is used by gmsk-demod
+ALIGNED_DATA tvoicepcdata	voicedata;	// Voice+Slowdata from HF
 
 
 
 void init_pcdata(void) {
   ctrldata.head.id  = FRAMESTARTID;
-  ctrldata.head.len = swap16(sizeof(headerdata)-5);
+  ctrldata.head.len = swap16(sizeof(ctrldata)-5);
   ctrldata.rxid = 0;
   headerdata.head.id  = FRAMESTARTID;
   headerdata.head.len = swap16(sizeof(headerdata)-5);
@@ -251,12 +254,13 @@ int main(void) {
   // *** Initialization-Section ***
   init_hardware();
   INTC_init_interrupts();		// Initialize interrupt vectors.
-
+  dstar_init_hardware();
   usb_init();				// Enable VBUS-Check
 
   // *** Initialierung der verschiedenen Parameter ***
 
   dstar_init_data(&voicedata.DVdata);	// Default Header "noCall"
+  init_pcdata();			// Initialisation of persitent Pkts (Header, Voice)
 
   Enable_global_interrupt();		// Enable all interrupts.
 

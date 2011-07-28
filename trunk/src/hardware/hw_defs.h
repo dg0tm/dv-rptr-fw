@@ -45,27 +45,11 @@
 #endif
 
 
-// PDCA Channels for AMBE:
-#define AMBE_CHANNEL0		0
-#define AMBE_CHANNEL1		1
-// PDCA Channel for Serial BF-Bus:
-#define BF_CHANNEL		2	// one Channel for RX and TX
 // PDCA Channels for RS232 Interface:
 #define RS232_RXCH		3
 #define RS232_TXCH		4
 // PDCA Channel for TWI / I²C
 #define TWI_CHANNEL		5
-
-
-// AMBE - Priorities
-#define AMBE_EPR_PRIO		AVR32_INTC_INT1	// >= als TXRDY, damit vor TRXEND
-#define AMBE_TRXSTART_PRIO	AVR32_INTC_INT3
-#define AMBE_TRXEND_PRIO	AVR32_INTC_INT1
-
-// Externe Interrupts EIC & NMI:
-#define AMBE_EPR_INT		AVR32_EIC_INT3
-//#define AMBE_EPR_PIN		AVR32_EIC_EXTINT_3_PIN
-//#define AMBE_EPR_FUNCTION	AVR32_EIC_EXTINT_3_FUNCTION
 
 // TWI Interface
 #define TWI_INTPRIO		AVR32_INTC_INT0
@@ -191,18 +175,6 @@
 #define R_SQL_IN	27
 #define	R_SQL_GND	47	// kOhms
 #define V_SQL_MAX	((V_Ref_32*(R_SQL_IN+R_SQL_GND)+R_SQL_GND/2)/R_SQL_GND)
-
-#define PreAmp_R2_Reihe		330
-#define PreAmp_R2_Poti		50000
-#define PreAmp_R1		2700
-
-#define PreAmp_R2_Step		(PreAmp_R2_Poti/255)
-
-// Spannungen in hunderstel Volt (x100) - ca. Werte
-#define calc_demod_gain(x)	((x*PreAmp_R2_Step+PreAmp_R2_Reihe)*100/PreAmp_R1)
-
-#define calc_modulation_vss(x)	((x*V_Ref_5)>>8)
-#define calc_xtal_vss(x)	((x*V_Ref_5)>>8)
 
 //#endif
 

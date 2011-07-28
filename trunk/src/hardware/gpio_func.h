@@ -41,31 +41,11 @@ typedef enum {
 #define FREEZE()
 #endif
 
-#ifndef DVATRX
-// Enable connection between DAC & Modulator
-#define enable_afout()		gpio0_clr(MODEN_PIN)
-#define disable_afout()		gpio0_set(MODEN_PIN)
-
-// RS232-Force-Off-Pin
-#define rs232_force_off()	gpio0_clr(RS232OFF_PIN)
-#define rs232_auto_on()		gpio0_set(RS232OFF_PIN)
-
 // LED's
 #define leds_off()	{ gpio0_set(RED_LED); gpio0_set(GREEN_LED); }
 #define leds_red()	{ gpio0_clr(RED_LED); gpio0_set(GREEN_LED); }
 #define leds_green()	{ gpio0_set(RED_LED); gpio0_clr(GREEN_LED); }
 #define leds_yellow()	{ gpio0_clr(RED_LED); gpio0_clr(GREEN_LED); }
-
-#else
-
-#define enable_afout()		{ }
-#define disable_afout()		{ }
-
-#define rs232_force_off()	{ }
-#define rs232_auto_on()		{ }
-
-#endif
-
 
 /*#if (defined DEBUG)
 #define SetDebug0()	gpio0_set(DBG_PIN0)
@@ -79,19 +59,10 @@ typedef enum {
 #define ClrDebug1()	{}
 //#endif
 
+// Empty-Macros. Add Port-Pin-Function if you wired to a Chip-Enable Pin
+#define rs232_auto_on()
+#define rs232_force_off()
 
-
-// cpld_start() übernimmt die Konfiguration (per cpld_config() eingestellt)
-// und löst Reset von AMBE und AD73311 (je nach Mode).
-#ifdef HW09PT
-void cpld_start(void);
-void cpld_stop(void);
-#else
-#define cpld_start()		gpio0_clr(RUNCFG_PIN)
-#define cpld_stop()		gpio0_set(RUNCFG_PIN)
-#endif
-//void gpio_init(void);
-//void gpio_enable_ssc(void);
 
 void	gpio0_set(unsigned int pin);
 void	gpio0_clr(unsigned int pin);
@@ -99,10 +70,6 @@ void	gpio0_tgl(unsigned int pin);
 
 unsigned int gpio0_readpin(unsigned int pin);
 unsigned int gpio0_readovr(unsigned int pin);
-
-// cpld_config() setzt CPLD in den Config-Modus (AMBE2020 und Codec sind im Reset).
-// Bei CPLDdisabled ist zudem der MCK abgetrennt (Stromsparen)
-void	cpld_config(tcpldmode mode);
 
 // cpld_operate() löst RESET des AD73311|AMBE2020 (beide nur bei AMBE-mode).
 //void cpld_operate(void);
