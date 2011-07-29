@@ -32,7 +32,8 @@
  * Report:
  * 2011-07-26 V0.01  Erstes Firmware-Release
  * 2011-07-28 V0.02  Empfang -> D0-Pakete funktioniert nun. TX nicht getestet.
- *
+ * 2011-07-29 V0.03  Reception & Transmit uses buffers with 1-SYNC-Size (21 frames).
+ * 		     rename all repeater-function calls from "dstar_xxx()" to "rptr_xxx()"
  *
  * ToDo:
  * - first SYNC detect -> Message (early switch on Transceiver)
@@ -76,9 +77,9 @@ typedef struct PACKED_DATA {
 
 typedef struct PACKED_DATA {
   tRS232pktHeader	head;		// 4byte
-  tds_voicedata		DVdata;		// KEEP DVdata aligend!!!
   unsigned char		rxid;
   unsigned char		pktcount;
+  tds_voicedata		DVdata;
   unsigned short	crc;
 } tvoicepcdata;
 
@@ -106,10 +107,9 @@ tfunction	data_flushrx	= cdc_flushrx;
 tRS232paket	rxdatapacket;	// data from pc/gateway received
 tRS232paket	answer;		// data to reply (get cmds)
 
-ALIGNED_DATA tctrlpcdata	ctrldata;
-ALIGNED_DATA theadrpcdata	headerdata;
-// caution: voicedata is used by gmsk-demod
-ALIGNED_DATA tvoicepcdata	voicedata;	// Voice+Slowdata from HF
+tctrlpcdata	ctrldata;
+theadrpcdata	headerdata;
+tvoicepcdata	voicedata;	// Voice+Slowdata from HF
 
 
 
@@ -149,16 +149,17 @@ __inline void handle_pc_paket(int len) {
   case RPTR_GET_CONFIG:
   case RPTR_SET_CONFIG:
   case RPTR_HEADER:		// start transmitting TXDelay-Preamble-Start-Header
-    dstar_transmit();		// Turn on Xmitter
+    rptr_transmit();		// Turn on Xmitter
     // keep 2 bytes for future use, keep layout identical to RX
-    dstar_init_header((tds_header *)&rxdatapacket.data[PKT_PARAM_IDX+2]);
+    rptr_init_header((tds_header *)&rxdatapacket.data[PKT_PARAM_IDX+2]);
     break;
   case RPTR_DATA:		// transmit data (voice and slowdata or sync)
     // keep 2 bytes for future use, keep layout identical to RX
-    dstar_addtxvoice((tds_voicedata *)&rxdatapacket.data[PKT_PARAM_IDX+2]);
+    rptr_addtxvoice((tds_voicedata *)&rxdatapacket.data[PKT_PARAM_IDX+2],
+      rxdatapacket.data[PKT_PARAM_IDX+1]);
     break;
   case RPTR_EOT:		// end transmission with EOT tail
-    dstar_endtransmit();
+    rptr_endtransmit();
     break;
   default:
     pc_fill_answer();
@@ -195,22 +196,43 @@ void handle_pcdata(void) {
 }
 
 
+/* handle_hfdata() processes bit-flags from rptr_func
+ * A typical reception look like this:
+ *
+ * D0 | 03 00 | 14 | 00 00 crc crc	>Preamble detected (not implemented jet)
+ * D0 | 03 00 | 15 | 01 00 crc crc	>Start-Frame-Pattern detected
+ * D0 | 2C 00 | 16 | 01 00 {header data} crc crc
+ *                      ^ Biterrors in header (not implemented jet)
+ * D0 | 0F 00 | 18 | 01 00 {VoiceData} 55 2D 16 crc crc > Voicedata with FrameSync
+ *                      ^ pktcount 0 to 20
+ * D0 | 0F 00 | 18 | 01 01 {VoiceData} {SlowData} crc crc > Slowdata already descrambled
+ * ...
+ * D0 | 03 00 | 19 | 01 00 crc crc	> End of Transmission
+ *                   ^ transmission counter 1..255,0
+ *              ^ cmd / type of paket ( = part of pkt-data )
+ *      ^ Length of Data (packetlength-5)
+ * ^ FramestartID
+ */
+
 void handle_hfdata(void) {
-  static bool sync_received = false;
+  static bool transmission = false;
   if (RPTR_Flags!=0) {
     if (RPTR_is_set(RPTR_RX_SYNC)) {
       RPTR_clear(RPTR_RX_SYNC);
-      sync_received = true;
+      if (!transmission) {
+        ctrldata.head.cmd = RPTR_RXSYNC;
+        ctrldata.rxid++;
+        headerdata.rxid = ctrldata.rxid;
+        voicedata.rxid  =  ctrldata.rxid;
+        append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
+        data_transmit((char *)&ctrldata, sizeof(ctrldata));
+        transmission = true;
+      }
     }
     if (RPTR_is_set(RPTR_RX_FRAME)) {
       RPTR_clear(RPTR_RX_FRAME);
-      voicedata.head.cmd = (sync_received)?RPTR_RXSYNC:RPTR_DATA;
-      voicedata.pktcount = RPTR_RxFrameCount;
-      if (!sync_received) {	// descramble slowdata
-	voicedata.DVdata.data[0] ^= 0x70;
-	voicedata.DVdata.data[1] ^= 0x4F;
-	voicedata.DVdata.data[2] ^= 0X93;
-      }
+      voicedata.head.cmd = RPTR_DATA;
+      voicedata.pktcount = rptr_copycurrentrxvoice(&voicedata.DVdata);
       append_crc_ccitt((char *)&voicedata, sizeof(voicedata));
       data_transmit((char *)&voicedata, sizeof(voicedata));
     } // fi voice data
@@ -222,22 +244,31 @@ void handle_hfdata(void) {
       voicedata.rxid =  ctrldata.rxid;
       append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
       data_transmit((char *)&ctrldata, sizeof(ctrldata));
+      transmission = true;
     } // fi start detected
     if (RPTR_is_set(RPTR_RX_STOP)) {
       RPTR_clear(RPTR_RX_STOP);
       ctrldata.head.cmd = RPTR_EOT;
       append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
       data_transmit((char *)&ctrldata, sizeof(ctrldata));
+      transmission = false;
     } // fi start detected
     if (RPTR_is_set(RPTR_RX_LOST)) {
       RPTR_clear(RPTR_RX_LOST);
       ctrldata.head.cmd = RPTR_RXLOST;
       append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
       data_transmit((char *)&ctrldata, sizeof(ctrldata));
+      transmission = false;
     } // fi start detected
     if (RPTR_is_set(RPTR_RX_HEADER)) {
       RPTR_clear(RPTR_RX_HEADER);
-      headerdata.biterrs = dstar_decodeheader(&headerdata.header, dstar_getheader());
+      if (!transmission) {
+        ctrldata.rxid++;
+        headerdata.rxid = ctrldata.rxid;
+        voicedata.rxid  =  ctrldata.rxid;
+        transmission    = true;
+      }
+      headerdata.biterrs = dstar_decodeheader(&headerdata.header, rptr_getheader());
       append_crc_ccitt((char *)&headerdata, sizeof(headerdata));
       data_transmit((char *)&headerdata, sizeof(headerdata));
     } // fi start detected
@@ -254,27 +285,27 @@ int main(void) {
   // *** Initialization-Section ***
   init_hardware();
   INTC_init_interrupts();		// Initialize interrupt vectors.
-  dstar_init_hardware();
+  rptr_init_hardware();
   usb_init();				// Enable VBUS-Check
 
   // *** Initialierung der verschiedenen Parameter ***
 
-  dstar_init_data(&voicedata.DVdata);	// Default Header "noCall"
+  rptr_init_data();			// Default Header "noCall"
   init_pcdata();			// Initialisation of persitent Pkts (Header, Voice)
 
   Enable_global_interrupt();		// Enable all interrupts.
 
-  dstar_receive();
+  rptr_receive();			// enable receiving.
 
   while (TRUE) {			// *** Main-Loop ***
-    SLEEP();				// erst einmal dösen bis zu einem IRQ
-    watchdog();
-    // USB-Funktion
-    usb_handler();
+    SLEEP();				// do nothing, until some IRQ wake the CPU
+    watchdog();				// do external watchdog for ST706T
 
-    handle_pcdata();
+    handle_hfdata();			// look, if something to do with the HF interface
 
-    handle_hfdata();
+    usb_handler();			// handle USB-based reception and enumeration
+
+    handle_pcdata();			// got a message / pkt from pc/gateway? handle it.
 
   } // ehliw MAINloop
 }

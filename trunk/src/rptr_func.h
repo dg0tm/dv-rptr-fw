@@ -28,7 +28,6 @@
 #define DSTAR_FUNC_H_
 
 #include "dv_dstar.h"
-#include "defs.h"
 
 extern unsigned int RPTR_Flags;
 #define RPTR_RX_START		0x01
@@ -41,10 +40,13 @@ extern unsigned int RPTR_Flags;
 #define RPTR_is_set(f)		(RPTR_Flags&f)
 #define RPTR_clear(f)		(RPTR_Flags &= ~f)
 
-extern unsigned char RPTR_RxFrameCount;
 
+// maximum receive packets, if no sync-frame received:
+#define RPTR_MAX_PKT_WO_SYNC	50
 
 #define DSTAR_BEFOREFRAMEENDS	16	// 16 bit-time before gmsk-modulator-data runs out
+// attention: this value must be smaller than 32 (last 32bit must be alreay loaded in GMSK fct)
+
 #define DSTAR_DECODE_TO		250	// 5 Sekunden (Minimum-Wert ist 8 = eine Header-Länge)
 
 #define DSTAR_DATAIDLETIMEOUT	20	// Frames w/o new data in slow-data-only tx mode
@@ -52,43 +54,46 @@ extern unsigned char RPTR_RxFrameCount;
 
 
 
-void	dstar_init_data(tds_voicedata *rxvoicedata);
+void	rptr_init_data(void);
 
 
-void	dstar_init_hardware(void);	// Init des DStar-Modus
-void	dstar_exit_hardware(void);	// Verlassen des DSTar-Modus
+void	rptr_init_hardware(void);	// Init des DStar-Modus
+void	rptr_exit_hardware(void);	// Verlassen des DSTar-Modus
 
-void	dstar_init_header(const tds_header *header);
-void	dstar_update_mycall(const char *MyCallSign);
-void	dstar_update_route(const char *NewRoute);
+void	rptr_init_header(const tds_header *header);
+void	rptr_update_mycall(const char *MyCallSign);
+void	rptr_update_route(const char *NewRoute);
 
-void	dstar_update_dest(const char *NewDest);
-void	dstar_update_depart(const char *NewDepart);
-void	dstar_update_yourcall(const char *NewYourCall);
+void	rptr_update_dest(const char *NewDest);
+void	rptr_update_depart(const char *NewDepart);
+void	rptr_update_yourcall(const char *NewYourCall);
 
-void	dstar_set_emergency(void);
-void	dstar_clr_emergency(void);
+void	rptr_set_emergency(void);
+void	rptr_clr_emergency(void);
 
 
-void	dstar_receive(void);
+void	rptr_receive(void);
 
 // Enable Voice-Tranmitting, starts with tx-delay, preamble and header
 // Transmit 60 Bytes between 2 sync cycles (set with "setSlowData()")
-void	dstar_transmit(void);
+void	rptr_transmit(void);
 
 // Enable Silence-Tranmitting, starts with tx-delay, preamble and header
 // Transmit 60 Bytes between 2 sync cycles (set with "setSlowData()")
 // If no data available, DVcmdRmtTXoff -> DVUP
-void	dstar_transmit_data(void);
+void	rptr_transmit_data(void);
 
-void	dstar_endtransmit(void);
+void	rptr_endtransmit(void);
 
-void	dstar_addtxvoice(const tds_voicedata *buf);
+// Adds a voice paket into the transmit-voice-buffer on position pkt_nr.
+// If pkt_nr is not in 0..20, the pkt is stored as last one (newest).
+void	rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr);
 
 
-char	*dstar_getheader(void);
+char	*rptr_getheader(void);
 
-int	dstar_channel_idle(void);	// No dstar-signals heared
+unsigned char rptr_copycurrentrxvoice(tds_voicedata *dest);
+void	rptr_copyrxvoice(tds_voicedata *dest, unsigned char nr);
 
 
 #endif // DSTAR_FUNC_H_
