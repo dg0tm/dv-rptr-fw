@@ -29,7 +29,6 @@
 
 
 #include "rptr_func.h"
-#include "defs.h"
 #include "dv_dstar.h"
 #include "gmsk_func.h"
 
@@ -51,13 +50,13 @@
 
 
 
-static const unsigned long preamble_dstar[5] = {
+ALIGNED_DATA static const unsigned long preamble_dstar[5] = {
   0x55555555, 0x55555555,
   0x55555555, 0x55555555,
   0x37050000
 };
 
-static const unsigned long lastframe_dstar[2] = {
+ALIGNED_DATA static const unsigned long lastframe_dstar[2] = {
   0x55555555,
   0xC87A0000
 };
@@ -65,10 +64,10 @@ static const unsigned long lastframe_dstar[2] = {
 
 
 // AMBE-no Voice Data (just silence)
-static const unsigned long SilenceFrame[3] = {
+ALIGNED_DATA static const unsigned long SilenceFrame[3] = {
   0x8e4fb8b0,	// ToDo Check!
   0xd55f2ba0,
-  0xe8000000
+  0xe8ffffff
 };
 
 
@@ -76,12 +75,11 @@ static const unsigned long SilenceFrame[3] = {
 // Globale Variablen für D-Star-Transmittions:
 
 unsigned int	RPTR_Flags;
-unsigned char	RPTR_RxFrameCount;
 
 tds_header DSTAR_HEADER = {		// Der zu sendende Header
   flags:{0x00, 0x00, 0x00},
-  RPT2Call:"        ",
-  RPT1Call:"        ",
+  RPT2Call:"       B",
+  RPT1Call:"       G",
   YourCall:"CQCQCQ  ",
   MyCall  :"no Call ",
   MyCall2 :"RPTR",
@@ -90,20 +88,18 @@ tds_header DSTAR_HEADER = {		// Der zu sendende Header
 static unsigned long	DStar_HeaderBS[DSTAR_HEADERBSBUFSIZE];	// D* Header Bitstream
 static unsigned long	DStar_RxHeader[DSTAR_HEADERBSBUFSIZE];	// Received Header Bitstream
 
-#define	TxVoiceBufSize	25
-static tds_voicedata	DStar_TxVoice[TxVoiceBufSize];	// 0.5s Voicedata
+#define	VoiceBufSize	DSTAR_SYNCINTERVAL		// Size of VoiceBuf
+
+ALIGNED_DATA static tds_voicedata	DStar_RxVoice[VoiceBufSize];
+ALIGNED_DATA static tds_voicedata	DStar_TxVoice[VoiceBufSize];
+
+
+unsigned char	RPTR_RxFrameCount;	// Count from 0 to 21 or until RPTR_MAX_PKT_WO_SYNC
+unsigned int	RPTR_TxFrameCount;	// Count continously
 
 unsigned int	TxVoice_RdPos, TxVoice_WrPos;
-
-
-tDV_RXstate	rxstate, last_rxstate;
-tDV_TXstate	txstate;
-
-unsigned int	DStar_PacketCounter;
 unsigned int	DStar_LostSyncCounter;		// Zähler, wie oft pro Durchgang Sync weg
 
-
-tds_voicedata	*RxVoiceBuffer;			// Pointer to VoiceBuffer
 
 
 //Sync and Slow-Data functions:
@@ -120,26 +116,27 @@ void dstar_scramble_data(tds_voicedata *dest) {
   dest->data[2] ^=  0X93;
 }
 
-char *dstar_get_data(char *DataBuffer, const tds_voicedata *srcpkt) {
+/*
+char *rptr_get_data(char *DataBuffer, const tds_voicedata *srcpkt) {
   *DataBuffer++ = srcpkt->data[0] ^ 0x70;
   *DataBuffer++ = srcpkt->data[1] ^ 0x4F;
   *DataBuffer++ = srcpkt->data[2] ^ 0X93;
   return DataBuffer;
 }
-
+*/
 
 // Abfrage, ob Daten-Bytes == FrameSyncDaten
-__inline int dstar_syncpaket(const tds_voicedata *rxdata) {
+__inline int rptr_syncpaket(const tds_voicedata *rxdata) {
   return ((rxdata->packet[2]&DSTAR_SYNCMSK) == DSTAR_SYNC);
 }
 
 
-__inline void dstar_tx_preamble(void) {
+__inline void rptr_tx_preamble(void) {
   gmsk_transmit((U32 *)preamble_dstar, DSTAR_PREAMPLELEN, 1);
 }
 
 
-__inline void dstar_tx_stop(void) {
+__inline void rptr_tx_stop(void) {
   gmsk_transmit((U32 *)lastframe_dstar, DSTAR_LASTFRAMEBITSIZE_TX, DSTAR_LASTFRAMEBITSIZE);
 }
 
@@ -151,67 +148,76 @@ __inline void dstar_tx_stop(void) {
 //! @{
 
 // Handler-Funktionen
-void dstar_stopped(void) {
+void rptr_stopped(void) {
   gmsk_set_reloadfunc(NULL);
   disable_ptt();
 }
 
 
-void dstar_transmit_stopframe(void) {
-  gmsk_set_reloadfunc(&dstar_stopped);
-  dstar_tx_stop();
+void rptr_transmit_stopframe(void) {
+  gmsk_set_reloadfunc(&rptr_stopped);
+  rptr_tx_stop();
 }
 
 
-void dstar_transmit_voicedata(void) {
-  int cycle = DStar_PacketCounter%DSTAR_SYNCINTERVAL;
+void rptr_transmit_voicedata(void) {
+#if VoiceBufSize!=DSTAR_SYNCINTERVAL
+  int cycle = TxVoice_RdPos%DSTAR_SYNCINTERVAL;
+#else
+#define cycle	TxVoice_RdPos
+#endif
   if (TxVoice_RdPos == TxVoice_WrPos) {	// no data left, flushed buffer!
     gmsk_transmit((U32 *)&SilenceFrame, DSTAR_VOICEFRAMEBITSIZE, 1);
-    gmsk_set_reloadfunc(&dstar_transmit_stopframe);
+    gmsk_set_reloadfunc(&rptr_transmit_stopframe);
   } else {
-    unsigned long *voicedat = DStar_TxVoice[TxVoice_RdPos].packet;
-    TxVoice_RdPos = (TxVoice_RdPos+1) % TxVoiceBufSize;
+    tds_voicedata *voicedat = &DStar_TxVoice[TxVoice_RdPos];
+    // replace voice data, currently transmitting with Silence
+    tds_voicedata *voicejusttxed = &DStar_TxVoice[(TxVoice_RdPos+VoiceBufSize-1) % VoiceBufSize];
+    TxVoice_RdPos = (TxVoice_RdPos+1) % VoiceBufSize;
     if (cycle==0) {		// Sync-Daten in SendeBuffer
-      dstar_insert_sync(&DStar_TxVoice[TxVoice_RdPos]);
+      dstar_insert_sync(voicedat);
     } else {
-      dstar_scramble_data(&DStar_TxVoice[TxVoice_RdPos]);
+      dstar_scramble_data(voicedat);
     } // esle
     if (TxVoice_RdPos == TxVoice_WrPos) {	// last voice frame?
-      gmsk_transmit(voicedat, DSTAR_VOICEFRAMEBITSIZE, 1);
-      gmsk_set_reloadfunc(&dstar_transmit_stopframe);
+      gmsk_transmit(voicedat->packet, DSTAR_VOICEFRAMEBITSIZE, 1);
+      gmsk_set_reloadfunc(&rptr_transmit_stopframe);
     } else {
-      gmsk_transmit(voicedat, DSTAR_FRAMEBITSIZE, DSTAR_FRAMEBITSIZE-DSTAR_BEFOREFRAMEENDS);
+      gmsk_transmit(voicedat->packet, DSTAR_FRAMEBITSIZE, DSTAR_FRAMEBITSIZE-DSTAR_BEFOREFRAMEENDS);
     }
-    DStar_PacketCounter++;
+    // replace voice data, currently transmitting with Silence
+    // DSTAR_BEFOREFRAMEENDS < 32: All bits we need for the current tx are in gmsk-buffer
+    memcpy(voicejusttxed, SilenceFrame, sizeof(tds_voicedata));
+    RPTR_TxFrameCount++;
   }
 }
 
 
-void dstar_transmit_header(void) {
+void rptr_transmit_header(void) {
   gmsk_transmit((U32 *)&DStar_HeaderBS, DSTAR_HEADEROUTBITSIZE, DSTAR_HEADEROUTBITSIZE-DSTAR_BEFOREFRAMEENDS);
-  DStar_PacketCounter = 0;
-  gmsk_set_reloadfunc(&dstar_transmit_voicedata);
+  RPTR_TxFrameCount = 0;
+  gmsk_set_reloadfunc(&rptr_transmit_voicedata);
 }
 
 
 
-void dstar_restart_header(void) {
-  gmsk_set_reloadfunc(&dstar_transmit_header);	// unmittelbar Header hinter
+void rptr_restart_header(void) {
+  gmsk_set_reloadfunc(&rptr_transmit_header);	// unmittelbar Header hinter
   gmsk_transmit((U32 *)&preamble_dstar[4], 15, 1);
 }
 
-void dstar_begin_new_tx(void) {
-  gmsk_set_reloadfunc(&dstar_restart_header);
-  dstar_tx_stop();
+void rptr_begin_new_tx(void) {
+  gmsk_set_reloadfunc(&rptr_restart_header);
+  rptr_tx_stop();
 }
 
-void dstar_break_current(void) {
+void rptr_break_current(void) {
   if (TxVoice_RdPos == TxVoice_WrPos) {	// last voice frame?
     gmsk_transmit((U32 *)&SilenceFrame, DSTAR_VOICEFRAMEBITSIZE, 1);
   } else {
     gmsk_transmit(DStar_TxVoice[TxVoice_RdPos].packet, DSTAR_VOICEFRAMEBITSIZE, 1);
   }
-  gmsk_set_reloadfunc(&dstar_begin_new_tx);
+  gmsk_set_reloadfunc(&rptr_begin_new_tx);
 }
 
 
@@ -219,59 +225,58 @@ void dstar_break_current(void) {
 // *** Demodulator Handler ***
 
 
-void dstar_receivedframe(void) {
+void rptr_receivedframe(void) {
+  U8 cycle = RPTR_RxFrameCount%DSTAR_SYNCINTERVAL;
   RPTR_RxFrameCount++;
-  if (RPTR_RxFrameCount < 50) {	// stopps rx if no sync
-    gmsk_set_receivebuf(RxVoiceBuffer->packet, DSTAR_FRAMEBITSIZE);
+  if (RPTR_RxFrameCount < RPTR_MAX_PKT_WO_SYNC) {	// stopps rx if no sync
+    gmsk_set_receivebuf(DStar_RxVoice[RPTR_RxFrameCount%DSTAR_SYNCINTERVAL].packet, DSTAR_FRAMEBITSIZE);
     RPTR_Flags |= RPTR_RX_FRAME;
-    rxstate = DVrxvoice;
   } else {				// fi Valid Data
     RPTR_Flags |= RPTR_RX_LOST;
-    rxstate = DVsilence;
   }
-  if ( (RPTR_RxFrameCount%21)==0 ) {	// Every 21 frame
-    if (dstar_syncpaket(RxVoiceBuffer)) {
+  if ( cycle==0 ) {	// Every 21 frame
+    if (rptr_syncpaket(&DStar_RxVoice[cycle])) {
       RPTR_RxFrameCount = 0;
     } else {
       DStar_LostSyncCounter++;
     }
-  } // fi
+  } else { // fi
+    dstar_scramble_data(&DStar_RxVoice[cycle]);	// Unscramble 3byte slow data
+  }
 }
 
 
-void dstar_receivedframesync(void) {
-  gmsk_set_receivebuf(RxVoiceBuffer->packet, DSTAR_FRAMEBITSIZE);
-  gmsk_set_receivefkt(&dstar_receivedframe);
-  RPTR_RxFrameCount = 0;
+void rptr_receivedframesync(void) {
+  //A Voice-Frame with a Sync-Pattern 0101010111010001101000 stored in position [0]
+  gmsk_set_receivebuf(DStar_RxVoice[1].packet, DSTAR_FRAMEBITSIZE);
+  gmsk_set_receivefkt(&rptr_receivedframe);
+  RPTR_RxFrameCount = 1;
   RPTR_Flags |= RPTR_RX_SYNC;
 }
 
 
-void dstar_receivedhdr(void) {
-  gmsk_set_receivebuf(RxVoiceBuffer->packet, DSTAR_FRAMEBITSIZE);
-  gmsk_set_receivefkt(&dstar_receivedframe);
+void rptr_receivedhdr(void) {
+  gmsk_set_receivebuf(DStar_RxVoice[0].packet, DSTAR_FRAMEBITSIZE);
+  gmsk_set_receivefkt(&rptr_receivedframe);
   RPTR_RxFrameCount = 0;
   DStar_LostSyncCounter = 0;
   RPTR_Flags |= RPTR_RX_HEADER;
-  rxstate = DVrxvoice;
 }
 
 
 // Handler to Receive Header in Mem-Buffer
-void dstar_getrxheader(void) {
+void rptr_getrxheader(void) {
   gmsk_set_receivebuf(DStar_RxHeader, DSTAR_HEADEROUTBITSIZE);
-  gmsk_set_receivefkt(&dstar_receivedhdr);
+  gmsk_set_receivefkt(&rptr_receivedhdr);
   RPTR_Flags |= RPTR_RX_START;
-  rxstate = DVrxheader;
 }
 
 
 // Handler to Receive Header in Mem-Buffer
-void dstar_gotstopframe(void) {
+void rptr_gotstopframe(void) {
   gmsk_set_receivebuf(NULL, 0);
   gmsk_set_receivefkt(NULL);
   RPTR_Flags |= RPTR_RX_STOP;
-  rxstate = DVsilence;
 }
 
 //! @}
@@ -283,33 +288,34 @@ void dstar_gotstopframe(void) {
 
 // *** API Funktionen ***
 
-void dstar_update_header() {
+void rptr_update_header() {
   append_crc_ccitt_revers((char *)&DSTAR_HEADER, sizeof(tds_header));
   dstar_buildheader(DStar_HeaderBS, &DSTAR_HEADER);
 }
 
 
-void dstar_init_data(tds_voicedata *rxvoicedata) {
-  dstar_update_header();
-  RxVoiceBuffer = rxvoicedata;
+void rptr_init_data(void) {
+  U8 cnt;
+  rptr_update_header();
   RPTR_Flags = 0;
+  for (cnt=0; cnt<VoiceBufSize; cnt++) {
+    memcpy(&DStar_TxVoice[cnt], SilenceFrame, sizeof(tds_voicedata));
+  }
 }
 
 
-void dstar_init_hardware(void) {
+void rptr_init_hardware(void) {
   gmsk_init();			// Init (De)Modulator Timer
-  rxstate      = DVnorx;
-  last_rxstate = DVnorx;
 }
 
 
-void dstar_exit_hardware(void) {
+void rptr_exit_hardware(void) {
   gmsk_exit();
 }
 
 
 
-void dstar_routeflags(void) {
+void rptr_routeflags(void) {
   char *rr1 = DSTAR_HEADER.RPT1Call;
   int cnt, filled = 0;
   for (cnt=0; cnt<8; cnt++) {
@@ -326,83 +332,88 @@ void dstar_routeflags(void) {
 }
 
 
-void dstar_update_mycall(const char *MyCallSign) {
+void rptr_update_mycall(const char *MyCallSign) {
   memcpy(DSTAR_HEADER.MyCall, MyCallSign, 12);
-  dstar_update_header();
+  rptr_update_header();
 }
 
-void dstar_update_route(const char *NewRoute) {
+void rptr_update_route(const char *NewRoute) {
   memcpy(DSTAR_HEADER.RPT2Call, NewRoute, 24);
-  dstar_routeflags();
-  dstar_update_header();
+  rptr_routeflags();
+  rptr_update_header();
 }
 
-void dstar_update_dest(const char *NewDest) {
+void rptr_update_dest(const char *NewDest) {
   memcpy(DSTAR_HEADER.RPT2Call, NewDest, 8);
-  dstar_update_header();
+  rptr_update_header();
 }
 
-void dstar_update_depart(const char *NewDepart) {
+void rptr_update_depart(const char *NewDepart) {
   memcpy(DSTAR_HEADER.RPT1Call, NewDepart, 8);
-  dstar_routeflags();
-  dstar_update_header();
+  rptr_routeflags();
+  rptr_update_header();
 }
 
-void dstar_update_yourcall(const char *NewYourCall) {
+void rptr_update_yourcall(const char *NewYourCall) {
   memcpy(DSTAR_HEADER.YourCall, NewYourCall, 8);
-  dstar_update_header();
+  rptr_update_header();
 }
 
-void dstar_set_emergency(void) {
+void rptr_set_emergency(void) {
   DSTAR_HEADER.flags[0] |= FLAG0_EMERG_MASK;
-  dstar_update_header();
+  rptr_update_header();
 }
 
-void dstar_clr_emergency(void) {
+void rptr_clr_emergency(void) {
   DSTAR_HEADER.flags[0] &= ~FLAG0_EMERG_MASK;
-  dstar_update_header();
+  rptr_update_header();
 }
 
 
-void dstar_init_header(const tds_header *header) {
+void rptr_init_header(const tds_header *header) {
   DSTAR_HEADER = *header;
-  dstar_update_header();
+  rptr_update_header();
 }
 
 
-void dstar_receive(void) {
-  gmsk_set_synchandler(&dstar_getrxheader, &dstar_gotstopframe, &dstar_receivedframesync);
+void rptr_receive(void) {
+  gmsk_set_synchandler(&rptr_getrxheader, &rptr_gotstopframe, &rptr_receivedframesync);
   gmsk_demodulator_start();
-  rxstate = DVsilence;
 }
 
 
-char *dstar_getheader(void) {
+char *rptr_getheader(void) {
   return (char *)DStar_RxHeader;
 }
 
 
-int dstar_channel_idle(void) {
-  return (rxstate == DVsilence)&&(gmsk_channel_idle());
+unsigned char rptr_copycurrentrxvoice(tds_voicedata *dest) {
+  U8 pkt = (RPTR_RxFrameCount+(VoiceBufSize-1))%VoiceBufSize;
+  memcpy(dest, DStar_RxVoice[pkt].packet, sizeof(tds_voicedata));
+  return pkt;
 }
 
 
+void rptr_copyrxvoice(tds_voicedata *dest, unsigned char nr) {
+  memcpy(dest, DStar_RxVoice[nr%VoiceBufSize].packet, sizeof(tds_voicedata));
+}
+
 
 // später mit update_header (Übergabe)
-void dstar_transmit(void) {
+void rptr_transmit(void) {
   TxVoice_RdPos = 0;
   TxVoice_WrPos = 0;
   if (is_pttactive()) {
-    gmsk_set_reloadfunc(&dstar_break_current);		// unmittelbar Header hinter EOT
+    gmsk_set_reloadfunc(&rptr_break_current);		// unmittelbar Header hinter EOT
   } else {
     enable_ptt();
-    gmsk_set_reloadfunc(&dstar_transmit_header);	// unmittelbar Header hinter
-    dstar_tx_preamble();				// die Preamble setzen
+    gmsk_set_reloadfunc(&rptr_transmit_header);	// unmittelbar Header hinter
+    rptr_tx_preamble();				// die Preamble setzen
   }
 }
 
 
-void dstar_transmit_data(void) {
+void rptr_transmit_data(void) {
   //DVnotx, DVtxdelay, DVtxpreamble, DVtxheader, DVtxvoice, DVtxdata
   /*
   if ((dvstate!=DVtxvoice)&&(dvstate!=DVtxvoicesync)) {	// Wechsel von Sprache
@@ -410,11 +421,11 @@ void dstar_transmit_data(void) {
       gmsk_stoptimer();
     } // fi
     dvstate = DVtxstartdata;			// Nach dem Header, nur Slow-Data ohne Voice
-    gmsk_set_reloadfunc(&dstar_transmit_header);	// unmittelbar Header hinter
-    dstar_tx_preamble();				// die Preamble setzen
+    gmsk_set_reloadfunc(&rptr_transmit_header);	// unmittelbar Header hinter
+    rptr_tx_preamble();				// die Preamble setzen
   } else {	// fi not sprache
     dvstate = DVtxdata;
-    gmsk_set_reloadfunc(&dstar_transmit_slowdata);	// unmittelbar Header hinter
+    gmsk_set_reloadfunc(&rptr_transmit_slowdata);	// unmittelbar Header hinter
   } // esle
 //  ambe_getsilence(VoiceBuffer.voice);
   rxstate = DVnorx;
@@ -422,17 +433,29 @@ void dstar_transmit_data(void) {
 }
 
 
-void dstar_endtransmit(void) {
+void rptr_endtransmit(void) {
 
 }
 
 
-void dstar_addtxvoice(const tds_voicedata *buf) {
-  memcpy(&DStar_TxVoice[TxVoice_WrPos], buf, sizeof(tds_voicedata));
-  TxVoice_WrPos = (TxVoice_WrPos+1) % TxVoiceBufSize;
-  if (TxVoice_RdPos == TxVoice_WrPos) {	// overflow!!!
-    TxVoice_RdPos = (TxVoice_RdPos+1) % TxVoiceBufSize;
+void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
+  if (pkt_nr < VoiceBufSize) {	// a numbered packet (00..20)
+    // a numbered packet in the empty buffer area results in an update of WrPos
+    // (last packet). Gaps are initialized with Silence.
+    if ( ((TxVoice_WrPos > TxVoice_RdPos) &&
+	 ((pkt_nr > TxVoice_WrPos)||(pkt_nr < TxVoice_RdPos))) ||
+	 ((TxVoice_WrPos < TxVoice_RdPos) &&
+ 	 ((pkt_nr > TxVoice_WrPos)&&(pkt_nr < TxVoice_RdPos))) ) {
+      TxVoice_WrPos = (pkt_nr+1) % VoiceBufSize;
+    }
+  } else {			// a new packet (w/o number)
+    pkt_nr = TxVoice_WrPos;
+    TxVoice_WrPos = (TxVoice_WrPos+1) % VoiceBufSize;
   }
+  if (TxVoice_RdPos == TxVoice_WrPos) {	// overflow!!!
+    TxVoice_RdPos = (TxVoice_RdPos+1) % VoiceBufSize;
+  }
+  memcpy(&DStar_TxVoice[pkt_nr], buf, sizeof(tds_voicedata));
 }
 
 

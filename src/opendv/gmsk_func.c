@@ -41,7 +41,6 @@
 
 
 #include "gmsk_func.h"
-#include "defs.h"
 
 #include "hw_defs.h"
 
