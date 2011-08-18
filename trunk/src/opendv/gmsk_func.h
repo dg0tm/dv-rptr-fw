@@ -74,8 +74,10 @@ void	gmsk_modulator_stop(void);
 void	gmsk_set_mod_hub(short int level);	// free modulation-level adjustment
 // hint: negative values -> inverted
 
-void	gmsk_set_txdelay(unsigned long millisec);
+void	gmsk_set_txdelay(unsigned int millisec);
 void	gmsk_set_reloadfunc(tgmsk_reloadfunc newfunc);
+
+unsigned int gmsk_get_txdelay(void);
 
 unsigned int gmsk_bitsleft(void);
 int	gmsk_nextpacket(void);		// Kann nächstes Paket angehängt werden?

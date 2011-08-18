@@ -142,12 +142,17 @@ void pc_fill_answer(void) {
 // handle_serial_paket()
 // verarbeitet "paket" mit len optionalen Daten (Header NICHT mitgerechnet).
 __inline void handle_pc_paket(int len) {
+  answer.head.len = 0;			// no answer.
   switch (rxdatapacket.head.cmd) {	// Kommando-Byte
   case RPTR_GET_STATUS:
     break;
   case RPTR_GET_VERSION:
   case RPTR_GET_CONFIG:
   case RPTR_SET_CONFIG:
+    break;
+  case RPTR_START:		// early Turn-On xmitter, if configured a long TXD
+    rptr_transmit_early_start(); // PTTon, only if TXD > Header-TX-Lengh 137.5ms
+    break;
   case RPTR_HEADER:		// start transmitting TXDelay-Preamble-Start-Header
     rptr_transmit();		// Turn on Xmitter
     // keep 2 bytes for future use, keep layout identical to RX
