@@ -116,14 +116,6 @@ void dstar_scramble_data(tds_voicedata *dest) {
   dest->data[2] ^=  0X93;
 }
 
-/*
-char *rptr_get_data(char *DataBuffer, const tds_voicedata *srcpkt) {
-  *DataBuffer++ = srcpkt->data[0] ^ 0x70;
-  *DataBuffer++ = srcpkt->data[1] ^ 0x4F;
-  *DataBuffer++ = srcpkt->data[2] ^ 0X93;
-  return DataBuffer;
-}
-*/
 
 // Abfrage, ob Daten-Bytes == FrameSyncDaten
 __inline int rptr_syncpaket(const tds_voicedata *rxdata) {
@@ -157,6 +149,7 @@ void rptr_stopped(void) {
 void rptr_transmit_stopframe(void) {
   gmsk_set_reloadfunc(&rptr_stopped);
   rptr_tx_stop();
+  RPTR_clear(RPTR_TX_EARLYPTT); // If PTT active from EarlySTART
 }
 
 
@@ -176,8 +169,10 @@ void rptr_transmit_voicedata(void) {
     TxVoice_RdPos = (TxVoice_RdPos+1) % VoiceBufSize;
     if (cycle==0) {		// Sync-Daten in SendeBuffer
       dstar_insert_sync(voicedat);
+#ifdef PLAIN_SLOWDATA
     } else {
       dstar_scramble_data(voicedat);
+#endif
     } // esle
     if (TxVoice_RdPos == TxVoice_WrPos) {	// last voice frame?
       gmsk_transmit(voicedat->packet, DSTAR_VOICEFRAMEBITSIZE, 1);
@@ -240,8 +235,10 @@ void rptr_receivedframe(void) {
     } else {
       DStar_LostSyncCounter++;
     }
+#ifdef PLAIN_SLOWDATA
   } else { // fi
     dstar_scramble_data(&DStar_RxVoice[cycle]);	// Unscramble 3byte slow data
+#endif
   }
 }
 
@@ -399,16 +396,33 @@ void rptr_copyrxvoice(tds_voicedata *dest, unsigned char nr) {
 }
 
 
+
+
 // später mit update_header (Übergabe)
 void rptr_transmit(void) {
   TxVoice_RdPos = 0;
   TxVoice_WrPos = 0;
   if (is_pttactive()) {
-    gmsk_set_reloadfunc(&rptr_break_current);		// unmittelbar Header hinter EOT
+    if (RPTR_is_set(RPTR_TX_EARLYPTT)) {
+      RPTR_clear(RPTR_TX_EARLYPTT);
+      gmsk_set_reloadfunc(&rptr_transmit_header); // Header aussenden
+    } else {
+      gmsk_set_reloadfunc(&rptr_break_current);	// unmittelbar Header hinter EOT
+    }
   } else {
     enable_ptt();
     gmsk_set_reloadfunc(&rptr_transmit_header);	// unmittelbar Header hinter
     rptr_tx_preamble();				// die Preamble setzen
+  }
+}
+
+
+void rptr_transmit_early_start(void) {
+  if ((gmsk_get_txdelay() > 138)&&(!is_pttactive())) {
+    RPTR_Flags |= RPTR_TX_EARLYPTT;
+    enable_ptt();
+    gmsk_set_reloadfunc(&rptr_transmit_stopframe);	// kill TX, if no header adds
+    rptr_tx_preamble();
   }
 }
 

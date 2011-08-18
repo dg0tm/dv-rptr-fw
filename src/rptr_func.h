@@ -37,6 +37,8 @@ extern unsigned int RPTR_Flags;
 #define RPTR_RX_FRAME		0x10
 #define RPTR_RX_HEADER		0x20
 
+#define RPTR_TX_EARLYPTT	0x0100
+
 #define RPTR_is_set(f)		(RPTR_Flags&f)
 #define RPTR_clear(f)		(RPTR_Flags &= ~f)
 
@@ -77,6 +79,10 @@ void	rptr_receive(void);
 // Enable Voice-Tranmitting, starts with tx-delay, preamble and header
 // Transmit 60 Bytes between 2 sync cycles (set with "setSlowData()")
 void	rptr_transmit(void);
+
+// In the case of long TXD, you can turn on PTT before you can send a valid
+// header. The configured TXD must be >138ms (660bit haeder need 137.5ms on air)
+void	rptr_transmit_early_start(void);
 
 // Enable Silence-Tranmitting, starts with tx-delay, preamble and header
 // Transmit 60 Bytes between 2 sync cycles (set with "setSlowData()")

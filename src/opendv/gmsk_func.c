@@ -660,8 +660,13 @@ void gmsk_set_mod_hub(short int level) {
 }
 
 
-void gmsk_set_txdelay(unsigned long millisec) {
+__inline void gmsk_set_txdelay(unsigned int millisec) {
   gmsk_txdelay = millisec;
+}
+
+
+__inline unsigned int gmsk_get_txdelay(void) {
+  return gmsk_txdelay;
 }
 
 
