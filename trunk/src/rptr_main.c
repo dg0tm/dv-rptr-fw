@@ -34,6 +34,8 @@
  * 2011-07-28 V0.02  Empfang -> D0-Pakete funktioniert nun. TX nicht getestet.
  * 2011-07-29 V0.03  Reception & Transmit uses buffers with 1-SYNC-Size (21 frames).
  * 		     rename all repeater-function calls from "dstar_xxx()" to "rptr_xxx()"
+ * 2011-08-19 V0.04  RXSYNC received from PC results in TX (last header used)
+ * 		     No CRC needed on USB (control with bool var 'rx_crc_disabled'
  *
  * ToDo:
  * - first SYNC detect -> Message (early switch on Transceiver)
@@ -43,6 +45,7 @@
 
 
 #include "defines.h"		// general defines
+#include "hw_defs.h"		// PTT-Macro
 #include "crc.h"
 #include "rptr_func.h"		// realtime-handler part of HF I/O
 #include "slowdata.h"		// later used on own (idle) transmittings
@@ -55,7 +58,7 @@
 #include "compiler.h"
 
 
-typedef int (*tdata_rx_fct)(void);	// Data-Received function (return #bytes)
+typedef int (*tdata_rx_fct)(void);		// Data-Received function (return #bytes)
 typedef int (*tdata_cpy_rx)(char *, int);	// Copy received data
 typedef void (*tdata_tx_fct)(const char *, int); // Data-Transmit function
 
@@ -101,6 +104,7 @@ tdata_rx_fct	data_received	= cdc_received;
 tdata_cpy_rx	data_copyrx	= cdc_copyblock;
 tdata_tx_fct	data_transmit	= cdc_transmit;
 tfunction	data_flushrx	= cdc_flushrx;
+bool		rx_crc_disabled = true;
 
 
 
@@ -158,6 +162,10 @@ __inline void handle_pc_paket(int len) {
     // keep 2 bytes for future use, keep layout identical to RX
     rptr_init_header((tds_header *)&rxdatapacket.data[PKT_PARAM_IDX+2]);
     break;
+  case RPTR_RXSYNC:		// start transmitting TXDelay-Preamble-Start-Header
+    if (!is_pttactive()) rptr_transmit();	// Turn on Xmitter only if PTT off
+    // (transmission use last header)
+    break;
   case RPTR_DATA:		// transmit data (voice and slowdata or sync)
     // keep 2 bytes for future use, keep layout identical to RX
     rptr_addtxvoice((tds_voicedata *)&rxdatapacket.data[PKT_PARAM_IDX+2],
@@ -192,8 +200,12 @@ void handle_pcdata(void) {
     if (rxbytes > sizeof(rxdatapacket)) rxbytes = sizeof(rxdatapacket);
     data_copyrx(rxdatapacket.data, rxbytes);
     if (rxdatapacket.head.id == FRAMESTARTID) {
+      U16 pkt_crc = 0;
       U16 framelen = swap16(rxdatapacket.head.len);
-      if ((framelen <= rxbytes) && (crc_ccitt(rxdatapacket.data, framelen+5)==0)) {
+      if (!rx_crc_disabled) {	// check CRC only, if needed.
+	pkt_crc = crc_ccitt(rxdatapacket.data, framelen+5);
+      } // fi check CRC
+      if ((framelen <= rxbytes) && (pkt_crc==0)) {
 	handle_pc_paket(framelen);
       } // fi correct / enough bytes received / crc ok
     } // fi correct ID
@@ -210,7 +222,7 @@ void handle_pcdata(void) {
  *                      ^ Biterrors in header (not implemented jet)
  * D0 | 0F 00 | 18 | 01 00 {VoiceData} 55 2D 16 crc crc > Voicedata with FrameSync
  *                      ^ pktcount 0 to 20
- * D0 | 0F 00 | 18 | 01 01 {VoiceData} {SlowData} crc crc > Slowdata already descrambled
+ * D0 | 0F 00 | 18 | 01 01 {VoiceData} {SlowData} crc crc > Slowdata not descrambled
  * ...
  * D0 | 03 00 | 19 | 01 00 crc crc	> End of Transmission
  *                   ^ transmission counter 1..255,0
@@ -228,7 +240,7 @@ void handle_hfdata(void) {
         ctrldata.head.cmd = RPTR_RXSYNC;
         ctrldata.rxid++;
         headerdata.rxid = ctrldata.rxid;
-        voicedata.rxid  =  ctrldata.rxid;
+        voicedata.rxid  = ctrldata.rxid;
         append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
         data_transmit((char *)&ctrldata, sizeof(ctrldata));
         transmission = true;

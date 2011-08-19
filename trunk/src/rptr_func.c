@@ -85,8 +85,10 @@ tds_header DSTAR_HEADER = {		// Der zu sendende Header
   MyCall2 :"RPTR",
 };
 
-static unsigned long	DStar_HeaderBS[DSTAR_HEADERBSBUFSIZE];	// D* Header Bitstream
+
+static unsigned long	DStar_HeaderBS[DSTAR_HEADERBSBUFSIZE];	// Header Bitstream for TX
 static unsigned long	DStar_RxHeader[DSTAR_HEADERBSBUFSIZE];	// Received Header Bitstream
+
 
 #define	VoiceBufSize	DSTAR_SYNCINTERVAL		// Size of VoiceBuf
 
