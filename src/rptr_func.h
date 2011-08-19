@@ -30,13 +30,14 @@
 #include "dv_dstar.h"
 
 extern unsigned int RPTR_Flags;
+// Receive Flags (checked in handle_hfdata()) Bit 0..7
 #define RPTR_RX_START		0x01
 #define RPTR_RX_STOP		0x02
 #define RPTR_RX_LOST		0x04
 #define RPTR_RX_SYNC		0x08
 #define RPTR_RX_FRAME		0x10
 #define RPTR_RX_HEADER		0x20
-
+// Transmit Flags Bit 8..15
 #define RPTR_TX_EARLYPTT	0x0100
 
 #define RPTR_is_set(f)		(RPTR_Flags&f)

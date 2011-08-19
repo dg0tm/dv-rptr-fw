@@ -29,7 +29,7 @@
 
 #define PROGRAM_START_OFFSET	0x00004000
 
-#define FIRMWAREVERSION		0x0030
+#define FIRMWAREVERSION		0x0040
 
 // Version Vxx.yy (last digit is char ' ', a, b...)
 
@@ -41,7 +41,7 @@
  * Bugfixlevel   c - Increased with one or more bugfixes (at the same time)
  */
 
-#define RELEASE_STRING		"2011-07-29"	// Release Date
+#define RELEASE_STRING		"2011-08-19"	// Release Date
 
 
 #ifndef ASM_DEFINE
