@@ -752,6 +752,7 @@ void gmsk_init(void) {
 
   adc_init(HFIN_CHANNEL);
   dac_init();
+  dac_set_active_ch(1);
 
   // *** Demodulator Global Vars ***
   dsp16_vect_zeropad(demod_adcin, DEMOD_ADC_SIZE, DEMOD_ADC_SIZE);
