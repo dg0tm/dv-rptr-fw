@@ -48,6 +48,7 @@
 // *** Debugging ***
 #ifdef DEBUG
 #define DEMOD_DBG_BITBUFSIZE	11		// Max. 10 Bit until Toggle
+//#define DEBUG_CLOCK_RECOVER	// output filtered biased AF-input
 #endif
 
 
