@@ -37,6 +37,8 @@
  * 2011-08-19 V0.04  RXSYNC received from PC results in TX (last header used)
  * 		     No CRC needed on USB (control with bool var 'rx_crc_disabled'
  *
+ * 2011-08-30 V0.50  first version for DV-RPTR Target, w/o setup. cmd VERSION works
+ *
  * ToDo:
  * - first SYNC detect -> Message (early switch on Transceiver)
  * - testing transmit-logic
@@ -49,6 +51,7 @@
 #include "crc.h"
 #include "rptr_func.h"		// realtime-handler part of HF I/O
 #include "slowdata.h"		// later used on own (idle) transmittings
+#include "controls.h"
 
 #include "gpio_func.h"		// GPIO-functions and macros (PTT, LEDs...)
 
@@ -56,6 +59,8 @@
 
 #include "intc.h"
 #include "compiler.h"
+
+#include <string.h>
 
 
 typedef int (*tdata_rx_fct)(void);		// Data-Received function (return #bytes)
@@ -151,6 +156,12 @@ __inline void handle_pc_paket(int len) {
   case RPTR_GET_STATUS:
     break;
   case RPTR_GET_VERSION:
+    pc_fill_answer();
+    answer.data[PKT_PARAM_IDX+0] = FIRMWAREVERSION & 0xFF;
+    answer.data[PKT_PARAM_IDX+1] = FIRMWAREVERSION >> 8;
+    memcpy(answer.data+PKT_PARAM_IDX+2, VERSION_IDENT, sizeof(VERSION_IDENT));
+    answer.head.len = sizeof(VERSION_IDENT)+3-1;	// cut String-Terminator /0
+    break;
   case RPTR_GET_CONFIG:
   case RPTR_SET_CONFIG:
     break;
@@ -311,6 +322,12 @@ int main(void) {
   init_pcdata();			// Initialisation of persitent Pkts (Header, Voice)
 
   Enable_global_interrupt();		// Enable all interrupts.
+  LEDs_Off();
+
+  // Replace with SETUP later...
+  set_dac_power_mode(TWI_DAC_POWERUP);	// Enable Reference-DAC MAX5820
+  set_chA_level(100 * 256 / V_Ref_5);	// Set Vss to 1.00V
+  set_chB_level(100 * 256 / V_Ref_5);
 
   rptr_receive();			// enable receiving.
 

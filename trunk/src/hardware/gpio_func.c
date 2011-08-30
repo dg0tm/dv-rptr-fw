@@ -28,10 +28,10 @@
  *
  *  Report:
  *  2010-01-16	Ausgemistet, Disable SLIP by Default
+ *  2011-08-30	Watchdog uses a PortB Pin on Target DVRPTR
+ *
  */
 
-
-#ifndef HW09PT
 
 #include "gpio_func.h"
 #include "hw_defs.h"
@@ -77,11 +77,19 @@ __inline unsigned int gpio1_readpin(unsigned int pin) {
 
 
 __inline void watchdog(void) {
+#ifdef DVRPTR
+  if (Get_system_register(AVR32_COUNT)&0x01000000) {
+    gpio1_set(WATCHDOG_PIN);	// toggle external Watchdog in slow freq.
+  } else {
+    gpio1_clr(WATCHDOG_PIN);
+  }
+#else
   if (Get_system_register(AVR32_COUNT)&0x01000000) {
     gpio0_set(WATCHDOG_PIN);	// toggle external Watchdog in slow freq.
   } else {
     gpio0_clr(WATCHDOG_PIN);
   }
+#endif
 }
 
 
@@ -115,9 +123,6 @@ void init_hardware(void) {
   AVR32_PM.mcctrl  = AVR32_PM_MCSEL_PLL0|AVR32_PM_MCCTRL_OSC0EN_MASK;
   AVR32_PM.pbamask = PBAMASK_NEEDED;
   AVR32_PM.pbbmask = PBBMASK_NEEDED;
-
-  // Test DV-ATRX Target
-  enable_extdemod();
 }
 
 
@@ -146,4 +151,3 @@ void exit_usb_hardware(void) {
 }
 
 
-#endif

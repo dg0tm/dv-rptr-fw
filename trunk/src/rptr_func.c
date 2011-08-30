@@ -3,12 +3,12 @@
  *
  * realtime controlling openDV (D-Star) operation of DV-RPTR
  *
- *  Created on: 26.07.2011 fomr opendv_func
+ *  Created on: 26.07.2011 from opendv_func
  *      Author: Jan Alte, DO1FJN
  *
  *
- * This file is part of the DV-modem firmware (DVfirmware).
- * For general information about DVfirmware see "dv-main.c".
+ * This file is part of the DV-RPTR firmware (DVfirmware).
+ * For general information about DVfirmware see "rptr-main.c".
  *
  * DVfirmware is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -31,12 +31,14 @@
 #include "rptr_func.h"
 #include "dv_dstar.h"
 #include "gmsk_func.h"
+#include "controls.h"
 
 #include "defines.h"
 
 #include "crc.h"
 #include "hw_defs.h"
 #include "gpio_func.h"
+#include "twi_func.h"
 
 #include "compiler.h"
 #include <string.h>
@@ -127,11 +129,13 @@ __inline int rptr_syncpaket(const tds_voicedata *rxdata) {
 
 __inline void rptr_tx_preamble(void) {
   gmsk_transmit((U32 *)preamble_dstar, DSTAR_PREAMPLELEN, 1);
+  LED_Set(LED_RED);
 }
 
 
 __inline void rptr_tx_stop(void) {
   gmsk_transmit((U32 *)lastframe_dstar, DSTAR_LASTFRAMEBITSIZE_TX, DSTAR_LASTFRAMEBITSIZE);
+  LED_Clear(LED_RED);
 }
 
 
@@ -230,6 +234,7 @@ void rptr_receivedframe(void) {
     RPTR_Flags |= RPTR_RX_FRAME;
   } else {				// fi Valid Data
     RPTR_Flags |= RPTR_RX_LOST;
+    LED_Clear(LED_GREEN);
   }
   if ( cycle==0 ) {	// Every 21 frame
     if (rptr_syncpaket(&DStar_RxVoice[cycle])) {
@@ -251,6 +256,7 @@ void rptr_receivedframesync(void) {
   gmsk_set_receivefkt(&rptr_receivedframe);
   RPTR_RxFrameCount = 1;
   RPTR_Flags |= RPTR_RX_SYNC;
+  LED_Set(LED_GREEN);
 }
 
 
@@ -276,6 +282,7 @@ void rptr_gotstopframe(void) {
   gmsk_set_receivebuf(NULL, 0);
   gmsk_set_receivefkt(NULL);
   RPTR_Flags |= RPTR_RX_STOP;
+  LED_Clear(LED_GREEN);
 }
 
 //! @}
@@ -304,7 +311,11 @@ void rptr_init_data(void) {
 
 
 void rptr_init_hardware(void) {
-  gmsk_init();			// Init (De)Modulator Timer
+#ifdef DVATRX
+  enable_extdemod();			// Test DV-ATRX Target
+#endif
+  twi_init();
+  gmsk_init();				// Init (De)Modulator Timer
 }
 
 

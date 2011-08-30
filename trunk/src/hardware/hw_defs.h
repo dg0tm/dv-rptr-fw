@@ -66,33 +66,87 @@
 
 #define OSC0STARTUPVALUE	4
 
-// use SSC TF-Workarround?
-#define SSC_TFDIRECTION		1		// 1 = Use TF as Input (connected with RF)
-
-//#define SSC_RCMR_INI		0x00000402	// RK-Input, Start falling RF
-//#define SSC_RFMR_INI		0x0000008F	// RF-Input, 16Bit Len, MSB First
-#define SSC_TCMR_INI		0x00000422	// Start=3 (High TF Level), with CKI, TK Pin is Src
-#define SSC_TFMR_INI		0x0000008F	// 16 Bits, MSB first
-
-#define SSC_RCMR_CODEC		0x00000402	// RK-Input, Start falling RF
-#define SSC_RFMR_CODEC		0x0000008F	// RF: Input, 16Bit Len, MSB First
-#define SSC_RCMR_AMBEACT	0x00000402	// RK-Input, Start falling RF
-#define SSC_RFMR_AMBEACT	0x0000008F	// RF: Input, 16Bit Len, MSB First
-// AMBE passive framed mode:
-// use a min. gap of 25 SSC-Clock-Cylces to prevent timing errors
-#define SSC_xCMR_AMBEPAS	0x13000402	// RK-Input, Start falling RF, Period 40Clks
-#define SSC_xFMR_AMBEPAS	0x0020008F	// RF: Pos.Pulse, 16Bit Len, MSB First, 24 Data
-
 // DAC Standard Values for GMSK / D-Star
 #define DAC_MIDDLE		0		// Signed Offset to real Bit-Middle
 
 
+
 #ifdef DVRPTR
-  // GPIO for DV-RPTR Target
+
+// GPIO Section (Defines)
+
+// Output-GPIO-Pins (PortA)
+#define LED_GREEN_PIN		AVR32_PIN_PA05		// Out
+#define LED_RED_PIN		AVR32_PIN_PA06		// Out
+#define PTT_OUT_PIN		AVR32_PIN_PA07		// Out
+#define TWI_SCL_PIN		AVR32_PIN_PA09		// TWI Clock (non PIO)
+#define TWI_SDA_PIN		AVR32_PIN_PA10		// TWI Data (non PIO)
+#define DACLD_PIN		AVR32_PIN_PA12		// OUT low active
+#define PFI_NMI_PIN		AVR32_PIN_PA13		// NMI/Input PowerFail
+#define DACEN_PIN		AVR32_PIN_PA16		// OUT low active
+
+#define EXP_IO20_PIN		AVR32_PIN_PA20		// general IN/OUT
+// I/O is also used to force he bootloader! Keep an eye to use it on add-on boards!
+// (don't set it to GND at startup)
+#define EXP_IO21_PIN		AVR32_PIN_PA21		// general IN/OUT
+#define EXP_IO23_PIN		AVR32_PIN_PA23
+
+#define USBID_PIN		AVR32_PIN_PA26
+#define USBVBOF_PIN		AVR32_PIN_PA27
+
+// *** Definition of Port A ***
+#define GPIO0_PULLUP		(1<<AVR32_PIN_PA03)|(1<<AVR32_PIN_PA04)|(1<<AVR32_PIN_PA08)|	\
+				(1<<AVR32_PIN_PA11)|(1<<AVR32_PIN_PA17)|(1<<EXP_IO20_PIN)|	\
+				(1<<EXP_IO21_PIN)|(1<<AVR32_PIN_PA22)|(1<<EXP_IO23_PIN)|	\
+				(1<<AVR32_PIN_PA24)|(1<<AVR32_PIN_PA25)|(1<<AVR32_PIN_PA28)| \
+				(1<<AVR32_PIN_PA29)
+// define GPIO Outputs
+#define GPIO0_ODER		(1<<LED_GREEN_PIN)|(1<<LED_RED_PIN)|(1<<PTT_OUT_PIN)|	\
+	                        (1<<DACLD_PIN)|(1<<USBVBOF_PIN)
+
+#define GPIO0_OVRINIT		(1<<LED_GREEN_PIN)|(1<<DACLD_PIN)
+
+#define GPIO0_PMR0		0
+#define GPIO0_PMR1		0
+#define GPIO0_DISABLE_MASK	(1<<AVR32_TWI_SDA_0_0_PIN)|(1<<AVR32_TWI_SCL_0_0_PIN)|	\
+	                        (1<<AVR32_SPI_MOSI_0_0_PIN)|(1<<AVR32_SPI_SCK_0_0_PIN)|	\
+	                        (1<<AVR32_SPI_NPCS_0_0_PIN)
+
+// Output-GPIO-Pins (PortB)
+#define WATCHDOG_PIN		(AVR32_PIN_PB00-32)
+
+// RS232 connected on Port B
+#define RS232RXD_PIN		(AVR32_USART1_RXD_0_1_PIN-32)
+#define RS232TXD_PIN		(AVR32_USART1_TXD_0_1_PIN-32)
+// RS232: Function "2" RxD/TxD & "0" CTS/RTS
+#define RS232CTS_PIN		(AVR32_USART1_CTS_0_0_PIN-32)
+#define RS232RTS_PIN		(AVR32_USART1_RTS_0_0_PIN-32)
+
+#define GPIO1_PULLUP		0
+#define GPIO1_ODER		(1<<WATCHDOG_PIN)
+#define GPIO1_OVRINIT		(1<<WATCHDOG_PIN)
+
+#define GPIO1_PMR0		0
+#define GPIO1_PMR1		(1<<RS232RXD_PIN)|(1<<RS232TXD_PIN)
+
+#define GPIO1_DISABLE_MASK	(1<<RS232RXD_PIN)|(1<<RS232TXD_PIN)|	\
+                                (1<<RS232CTS_PIN)|(1<<RS232RTS_PIN)
+
+
+#define LED_GREEN		LED_GREEN_PIN
+#define LED_RED			LED_RED_PIN
+
+#define LED_Clear(ledpins)	gpio0_set(ledpins)
+#define LED_Set(ledpins)	gpio0_clr(ledpins)
+#define LEDs_Off()		(AVR32_GPIO.port[0].ovrs = (1<<LED_RED_PIN)|(1<<LED_GREEN_PIN))
+
+#define V_Ref_5			504	// Voltx100
+
+
 #endif
 
-//#ifdef DVATRX ...
 
+#ifdef DVATRX
 // GPIO Section (Defines)
 // (target depended)
 // Output-GPIO-Pins (PortA)
@@ -119,17 +173,6 @@
 #define PTT_OUT_PIN		AVR32_PIN_PA28		// OUT
 #define MAIN_POWER_PIN		AVR32_PIN_PA29		// OUT
 
-
-#define MIC_PTTKEY_INT		AVR32_EIC_INT0
-#define MIC_SCKEY_INT		AVR32_EIC_INT1
-#define KEYB_INT		AVR32_EIC_INT5
-
-
-// Priorities
-#define MICKEYINT_PRIO		AVR32_INTC_INT0
-#define KEYBINT_PRIO		AVR32_INTC_INT0
-
-
 // *** Definition of Port A ***
 #define GPIO0_PULLUP		(1<<MIC_PTT_PIN)|(1<<MIC_SC_PIN)|(1<<MIC_UP_PIN)|	\
 				(1<<MIC_DN_PIN)|(1<<KBINT_PIN)
@@ -148,6 +191,32 @@
 	                        (1<<AVR32_SPI_NPCS_0_0_PIN)|	\
 	                        (1<<HFIN_PIN)|(1<<RSSI_PIN)
 
+// Output-GPIO-Pins (PortB)
+#define CPLDCFG0_PIN		(AVR32_PIN_PB01-32)
+#define CPLDCFG1_PIN		(AVR32_PIN_PB00-32)
+
+// RS232 connected on Port B
+#define RS232RXD_PIN		(AVR32_USART1_RXD_0_1_PIN-32)
+#define RS232TXD_PIN		(AVR32_USART1_TXD_0_1_PIN-32)
+// RS232: Function "2" RxD/TxD & "0" CTS/RTS
+#define RS232CTS_PIN		(AVR32_USART1_CTS_0_0_PIN-32)
+#define RS232RTS_PIN		(AVR32_USART1_RTS_0_0_PIN-32)
+
+// *** Definition of Port B ***
+#define GPIO1_PULLUP		0
+#define GPIO1_ODER		(1<<CPLDCFG0_PIN)|(1<<CPLDCFG1_PIN)
+#define GPIO1_OVRINIT		0
+#define GPIO1_PMR0		0
+#define GPIO1_PMR1		(1<<RS232RXD_PIN)|(1<<RS232TXD_PIN)
+
+#define GPIO1_DISABLE_MASK	(1<<RS232RXD_PIN)|(1<<RS232TXD_PIN)|	\
+                                (1<<RS232CTS_PIN)|(1<<RS232RTS_PIN)|	\
+                                (1<<(AVR32_SSC_RX_CLOCK_0_PIN&0x1F))|	\
+                                (1<<(AVR32_SSC_RX_DATA_0_PIN&0x1F))|	\
+                                (1<<(AVR32_SSC_RX_FRAME_SYNC_0_PIN&0x1F))| \
+                                (1<<(AVR32_SSC_TX_CLOCK_0_PIN&0x1F))| \
+                                (1<<(AVR32_SSC_TX_DATA_0_PIN&0x1F))| \
+                                (1<<(AVR32_SSC_TX_FRAME_SYNC_0_PIN&0x1F))
 
 // GPIO Macros
 #define dev_power_off()		(AVR32_GPIO.port[0].ovrc = 1 << MAIN_POWER_PIN)
@@ -156,10 +225,6 @@
 #define disable_extdemod()	gpio0_set(TRX_SEL_PIN)
 #define is_internalmod()	gpio0_readovr(TRX_SEL_PIN)
 
-#define enable_ptt()		gpio0_set(PTT_OUT_PIN)
-#define disable_ptt()		gpio0_clr(PTT_OUT_PIN)
-#define is_pttactive()		gpio0_readovr(PTT_OUT_PIN)
-
 #define pll_set_strobe()	gpio0_set(PLL_STROBE_PIN)
 #define pll_clr_strobe()	gpio0_clr(PLL_STROBE_PIN)
 #define pll_set_data()		gpio0_set(PLL_DATA_PIN)
@@ -167,69 +232,50 @@
 #define pll_set_clock()		gpio0_set(PLL_CLOCK_PIN)
 #define pll_clr_clock()		gpio0_clr(PLL_CLOCK_PIN)
 
-// Spannungen und Widerstände / Teiler Definitionen
 
-#define V_Ref_32	320	// Voltx100
-#define V_Ref_5		490	// Voltx100
+#define MIC_PTTKEY_INT		AVR32_EIC_INT0
+#define MIC_SCKEY_INT		AVR32_EIC_INT1
+#define KEYB_INT		AVR32_EIC_INT5
 
-#define R_SQL_IN	27
-#define	R_SQL_GND	47	// kOhms
-#define V_SQL_MAX	((V_Ref_32*(R_SQL_IN+R_SQL_GND)+R_SQL_GND/2)/R_SQL_GND)
-
-//#endif
+// Priorities
+#define MICKEYINT_PRIO		AVR32_INTC_INT0
+#define KEYBINT_PRIO		AVR32_INTC_INT0
 
 
-// common pin defs (both devices):
+#define LED_GREEN		0
+#define LED_RED			1
 
-#define WATCHDOG_PIN		AVR32_PIN_PA11
+#define LED_Clear(ledpins)
+#define LED_Set(ledpins)
+#define LEDs_Off()
 
-#define CPLDRKTKDIR_PIN		AVR32_PIN_PA17
-#define CPLDTFDIR_PIN		AVR32_PIN_PA22
-#define RUNCFG_PIN		AVR32_PIN_PA24
-
-#define USBID_PIN		AVR32_PIN_PA26
-#define USBVBOF_PIN		AVR32_PIN_PA27
-
-#define HFIN_PIN		AVR32_ADC_AD_7_PIN
-#define RSSI_PIN		AVR32_ADC_AD_6_PIN
-
-// Output-GPIO-Pins (PortB)
-#define CPLDCFG0_PIN		(AVR32_PIN_PB01-32)
-#define CPLDCFG1_PIN		(AVR32_PIN_PB00-32)
+#define V_Ref_5			490	// Voltx100
 
 
-// RS232 connected on Port B
-#define RS232RXD_PIN		(AVR32_USART1_RXD_0_1_PIN-32)
-#define RS232TXD_PIN		(AVR32_USART1_TXD_0_1_PIN-32)
-// RS232: Function "2" RxD/TxD & "0" CTS/RTS
-#define RS232CTS_PIN		(AVR32_USART1_CTS_0_0_PIN-32)
-#define RS232RTS_PIN		(AVR32_USART1_RTS_0_0_PIN-32)
-#define RS232OFF_PIN		AVR32_PIN_PA12
+#endif // DVATRX Hardware
+
 
 
 #define twi_release_pins()	(AVR32_GPIO.port[0].gpers = (1<<AVR32_TWI_SDA_0_0_PIN)|(1<<AVR32_TWI_SCL_0_0_PIN))
 #define twi_connect_pins()	(AVR32_GPIO.port[0].gperc = (1<<AVR32_TWI_SDA_0_0_PIN)|(1<<AVR32_TWI_SCL_0_0_PIN))
 
+#define enable_ptt()		gpio0_set(PTT_OUT_PIN)
+#define disable_ptt()		gpio0_clr(PTT_OUT_PIN)
+#define is_pttactive()		gpio0_readovr(PTT_OUT_PIN)
 
-// *** Definition of Port B ***
 
-#define GPIO1_PULLUP		0
-#define GPIO1_ODER		(1<<CPLDCFG0_PIN)|(1<<CPLDCFG1_PIN)
-#define GPIO1_OVRINIT		0
-#define GPIO1_PMR0		0
-#define GPIO1_PMR1		(1<<RS232RXD_PIN)|(1<<RS232TXD_PIN)
+// Spannungen und Widerstände / Teiler Definitionen
 
-#define GPIO1_DISABLE_MASK	(1<<(RS232RXD_PIN&0x1F))|(1<<(RS232TXD_PIN&0x1F))|	\
-                                (1<<(RS232CTS_PIN&0x1F))|(1<<(RS232RTS_PIN&0x1F))|	\
-                                (1<<(AVR32_SSC_RX_CLOCK_0_PIN&0x1F))| \
-                                (1<<(AVR32_SSC_RX_DATA_0_PIN&0x1F))| \
-                                (1<<(AVR32_SSC_RX_FRAME_SYNC_0_PIN&0x1F))| \
-                                (1<<(AVR32_SSC_TX_CLOCK_0_PIN&0x1F))| \
-                                (1<<(AVR32_SSC_TX_DATA_0_PIN&0x1F))| \
-                                (1<<(AVR32_SSC_TX_FRAME_SYNC_0_PIN&0x1F))
+#define V_Ref_32		320	// Voltx100
+#define R_SQL_IN		27
+#define	R_SQL_GND		47	// kOhms
+#define V_SQL_MAX		((V_Ref_32*(R_SQL_IN+R_SQL_GND)+R_SQL_GND/2)/R_SQL_GND)
 
+#define HFIN_PIN		AVR32_ADC_AD_7_PIN
+#define RSSI_PIN		AVR32_ADC_AD_6_PIN
 
 // End GPIO Section
+
 
 #define PBAMASK_DEFAULT		0x1FFF
 #define PBAMASK_NEEDED		0x1B7F	// Disable Clock for USART0, PWM
@@ -237,24 +283,11 @@
 #define PBBMASK_NEEDED		0x0005
 #define PBBMASK_USBB		0x0002	// Bit1
 
-// Peripheral Definitions:
-#define BFIO			AVR32_USART2
-#define BFIRQ			AVR32_USART2_IRQ
-#define BFPIDRX			AVR32_PDCA_PID_USART2_RX
-#define BFPIDTX			AVR32_PDCA_PID_USART2_TX
-
-#define MICIO			AVR32_USART2
-#define MICIRQ			AVR32_USART2_IRQ
-
 
 #define RS232			AVR32_USART1
 #define RS232IRQ		AVR32_USART1_IRQ
 #define RS232PIDRX		AVR32_PDCA_PID_USART1_RX
 #define RS232PIDTX		AVR32_PDCA_PID_USART1_TX
-
-// Debug-Pins
-#define DBG_PIN0		RED_LED
-#define DBG_PIN1		GREEN_LED
 
 
 #endif // HW_DEFS_H_

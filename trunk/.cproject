@@ -49,7 +49,7 @@
 </option>
 <option id="avr32.c.compiler.option.flashvault.834394340" name="Enable FlashVault support" superClass="avr32.c.compiler.option.flashvault" value="false" valueType="boolean"/>
 <option id="gnu.c.compiler.option.preprocessor.def.symbols.72695026" name="Defined symbols (-D)" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols">
-<listOptionValue builtIn="false" value="DVATRX"/>
+<listOptionValue builtIn="false" value="DVRPTR"/>
 <listOptionValue builtIn="false" value="HW10"/>
 <listOptionValue builtIn="false" value="DEBUG"/>
 </option>
