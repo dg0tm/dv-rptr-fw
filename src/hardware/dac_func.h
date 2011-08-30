@@ -62,11 +62,13 @@ void	dac_modulate(int value);
 // Wirt nun extern (FSK-Pin) < 1V benötigt, so wird der Hub angepasst.
 #define DAC_BUFREF_MINVOLTAGE	52	// ^= 1V 256^=4.90V
 
+#endif	// DV-ATRX
+
+
 void	dac_set_active_ch(char no);	// Auswahl des Kanals bei dem DualDAC für dac_modulate()
 
 char	dac_get_active_ch(void);
 
-#endif	// DV-ATRX
 
 // Low-Level:
 
