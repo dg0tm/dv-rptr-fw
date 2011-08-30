@@ -104,7 +104,7 @@
 #define GPIO0_ODER		(1<<LED_GREEN_PIN)|(1<<LED_RED_PIN)|(1<<PTT_OUT_PIN)|	\
 	                        (1<<DACLD_PIN)|(1<<USBVBOF_PIN)
 
-#define GPIO0_OVRINIT		(1<<LED_GREEN_PIN)|(1<<DACLD_PIN)
+#define GPIO0_OVRINIT		(1<<LED_GREEN_PIN)|(1<<DACLD_PIN)|(1<<PTT_OUT_PIN)
 
 #define GPIO0_PMR0		0
 #define GPIO0_PMR1		0
@@ -142,6 +142,9 @@
 
 #define V_Ref_5			504	// Voltx100
 
+#define enable_ptt()		gpio0_clr(PTT_OUT_PIN)
+#define disable_ptt()		gpio0_set(PTT_OUT_PIN)
+#define is_pttactive()		(!gpio0_readovr(PTT_OUT_PIN))
 
 #endif
 
@@ -251,6 +254,10 @@
 
 #define V_Ref_5			490	// Voltx100
 
+#define enable_ptt()		gpio0_set(PTT_OUT_PIN)
+#define disable_ptt()		gpio0_clr(PTT_OUT_PIN)
+#define is_pttactive()		gpio0_readovr(PTT_OUT_PIN)
+
 
 #endif // DVATRX Hardware
 
@@ -258,10 +265,6 @@
 
 #define twi_release_pins()	(AVR32_GPIO.port[0].gpers = (1<<AVR32_TWI_SDA_0_0_PIN)|(1<<AVR32_TWI_SCL_0_0_PIN))
 #define twi_connect_pins()	(AVR32_GPIO.port[0].gperc = (1<<AVR32_TWI_SDA_0_0_PIN)|(1<<AVR32_TWI_SCL_0_0_PIN))
-
-#define enable_ptt()		gpio0_set(PTT_OUT_PIN)
-#define disable_ptt()		gpio0_clr(PTT_OUT_PIN)
-#define is_pttactive()		gpio0_readovr(PTT_OUT_PIN)
 
 
 // Spannungen und Widerstände / Teiler Definitionen
@@ -288,6 +291,9 @@
 #define RS232IRQ		AVR32_USART1_IRQ
 #define RS232PIDRX		AVR32_PDCA_PID_USART1_RX
 #define RS232PIDTX		AVR32_PDCA_PID_USART1_TX
+
+#define rs232_auto_on()
+#define rs232_force_off()
 
 
 #endif // HW_DEFS_H_
