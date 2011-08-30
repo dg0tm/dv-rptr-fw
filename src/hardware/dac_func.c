@@ -22,6 +22,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this package. If not, see <http://www.gnu.org/licenses/>.
  *
+ * Report:
+ * 2011-08-30	Remove AD5260 single DAC code (used on DV-Modem)...
  */
 
 
@@ -33,12 +35,9 @@
 
 #define DAC_MIDDLE_LEVEL	0x07FFF		// Value for 1/2 Vref
 
-#ifdef DVATRX	// DAC is Dual-DAC AD5312
 #define DAC_PWRDOWN_VAL		0x6000		// PD = 10 100K->GND
-int	dac_select_mask = 0x0000;
-#else		// DAC is a AD5620
-#define DAC_PWRDOWN_VAL		0x8000		// Powerdown 100k-GND
-#endif
+int	dac_select_mask;
+
 
 #define spi_csr		((0<<AVR32_SPI_DLYBCT_OFFSET)|(1<<AVR32_SPI_DLYBS_OFFSET)|	\
     (((MASTERCLOCK+DAC_CLOCK/2)/DAC_CLOCK)<<AVR32_SPI_SCBR_OFFSET)|			\
@@ -62,10 +61,8 @@ void dac_init(void) {
 #endif
   AVR32_SPI.mr &= ~(1 << (AVR32_SPI_MR_PCS_OFFSET + SPI_CS));
   AVR32_SPI.cr = AVR32_SPI_CR_SPIEN_MASK;
-
-#ifdef DVATRX
   gpio0_clr(DACLD_PIN);
-#endif
+  dac_set_active_ch(0);		// init dac_select_mask (out on CH A)
 }
 
 
@@ -95,11 +92,7 @@ __inline void dac_transmit(unsigned short int data) {
 
 
 __inline void dac_modulate(int value) {
-#ifdef DVATRX
   AVR32_SPI.tdr = dac_select_mask | (__builtin_sats(value, 4, 12)+0x0800);
-#else
-  AVR32_SPI.tdr = __builtin_sats(value, 2, 14)+0x2000;
-#endif
 }
 
 
@@ -114,7 +107,6 @@ void dac_waitidle(void) {
 }
 
 
-#if DVATRX
 void dac_set_active_ch(char no) {
   // Powerdown opposite DAC-Channel:
   AVR32_SPI.tdr = (no)?0x4000:0xC000 | DAC_PWRDOWN_VAL | DAC_MIDDLE_LEVEL;
@@ -127,6 +119,4 @@ void dac_set_active_ch(char no) {
 __inline char dac_get_active_ch(void) {
   return (dac_select_mask&0x8000)?1:0;
 }
-
-#endif
 

@@ -29,7 +29,7 @@
 
 #define PROGRAM_START_OFFSET	0x00004000
 
-#define FIRMWAREVERSION		0x0040
+#define FIRMWAREVERSION		0x0050
 
 // Version Vxx.yy (last digit is char ' ', a, b...)
 
@@ -41,8 +41,9 @@
  * Bugfixlevel   c - Increased with one or more bugfixes (at the same time)
  */
 
-#define RELEASE_STRING		"2011-08-19"	// Release Date
+#define RELEASE_STRING		"2011-08-30"	// Release Date
 
+#define VERSION_IDENT		"DV-RPTR R." RELEASE_STRING
 
 #ifndef ASM_DEFINE
 

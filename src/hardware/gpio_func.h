@@ -59,11 +59,6 @@ typedef enum {
 #define ClrDebug1()	{}
 //#endif
 
-// Empty-Macros. Add Port-Pin-Function if you wired to a Chip-Enable Pin
-#define rs232_auto_on()
-#define rs232_force_off()
-
-
 void	gpio0_set(unsigned int pin);
 void	gpio0_clr(unsigned int pin);
 void	gpio0_tgl(unsigned int pin);
