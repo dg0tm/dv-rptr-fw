@@ -36,6 +36,18 @@
 #define DAC_MIDDLE_LEVEL	0x07FFF		// Value for 1/2 Vref
 
 #define DAC_PWRDOWN_VAL		0x6000		// PD = 10 100K->GND
+
+#define DAC_REFBUFFER_MASK	0x4000
+#define DAC_CH_AB_MASK		0x8000
+
+#ifdef DVATRX
+#define DAC_CHA_MASK		DAC_REFBUFFER_MASK
+#define DAC_CHB_MASK		(DAC_CH_AB_MASK|DAC_REFBUFFER_MASK)
+#else
+#define DAC_CHA_MASK		0x0000
+#define DAC_CHB_MASK		DAC_CH_AB_MASK
+#endif
+
 int	dac_select_mask;
 
 
@@ -109,9 +121,9 @@ void dac_waitidle(void) {
 
 void dac_set_active_ch(char no) {
   // Powerdown opposite DAC-Channel:
-  AVR32_SPI.tdr = (no)?0x4000:0xC000 | DAC_PWRDOWN_VAL | DAC_MIDDLE_LEVEL;
+  AVR32_SPI.tdr = ((no)?DAC_CHA_MASK:DAC_CHB_MASK) | DAC_PWRDOWN_VAL | DAC_MIDDLE_LEVEL;
   // Select new Channel (with BUF enabled)
-  dac_select_mask = (no)?0xC000:0x4000;
+  dac_select_mask = (no)?DAC_CHB_MASK:DAC_CHA_MASK;
   dac_waitidle();
 }
 

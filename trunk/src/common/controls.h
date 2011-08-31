@@ -35,7 +35,7 @@
 #define TWI_MAX5387_REGB	0x12
 #endif
 
-#if DVRPTR
+#ifdef DVRPTR
 #if DAC_USE_L_TYPE
 #define TWI_DAC_ADR		0x38	// L-Type
 #else
