@@ -52,5 +52,8 @@ void set_dac_power_mode(unsigned char mde);
 void set_chA_level(unsigned char level);	// set reference voltage on DAC ChA (FSK)
 void set_chB_level(unsigned char level);	// set reference voltage on DAC ChB (AFSK)
 
+unsigned char get_chA_level(void);
+unsigned char get_chB_level(void);
+
 
 #endif // CONTROLS_H_
