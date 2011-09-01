@@ -74,3 +74,22 @@ void set_chB_level(unsigned char level) {
 #endif
 }
 
+
+unsigned char get_chA_level(void) {
+#ifdef DVATRX
+  return (chA_lvl.value);
+#endif
+#ifdef DVRPTR
+  return (chA_lvl.reg << 4)|(chA_lvl.value>>4);
+#endif
+}
+
+
+unsigned char get_chB_level(void) {
+#ifdef DVRPTR
+  return (chB_lvl.reg << 4)|(chB_lvl.value>>4);
+#else
+  return 0;
+#endif
+}
+

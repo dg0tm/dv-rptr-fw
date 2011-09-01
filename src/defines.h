@@ -27,9 +27,7 @@
 #ifndef DEFINES_H_
 #define DEFINES_H_
 
-#define PROGRAM_START_OFFSET	0x00004000
-
-#define FIRMWAREVERSION		0x0050
+#define FIRMWAREVERSION		0x0060
 
 // Version Vxx.yy (last digit is char ' ', a, b...)
 
@@ -41,9 +39,13 @@
  * Bugfixlevel   c - Increased with one or more bugfixes (at the same time)
  */
 
-#define RELEASE_STRING		"2011-08-30"	// Release Date
+#define RELEASE_STRING		"2011-09-01"	// Release Date
 
 #define VERSION_IDENT		"DV-RPTR R." RELEASE_STRING
+
+#define PROGRAM_START_OFFSET	0x00004000
+#define SERIALNUMBER_ADDRESS	0x80003FFC	// Flashstart+StartOfs-4
+
 
 #ifndef ASM_DEFINE
 

@@ -37,20 +37,23 @@
  * 2011-08-19 V0.04  RXSYNC received from PC results in TX (last header used)
  * 		     No CRC needed on USB (control with bool var 'rx_crc_disabled'
  *
- * 2011-08-30 V0.50  first version for DV-RPTR Target, w/o setup. cmd VERSION works
+ * 2011-08-30 V0.05  first version for DV-RPTR Target, w/o setup. cmd VERSION works
+ * 2011-08-30 V0.06  large transmit buffer, new - I hope final - CMD set
  *
  * ToDo:
  * - first SYNC detect -> Message (early switch on Transceiver)
- * - testing transmit-logic
- * - configuration: Hotspot/Repeater, TXDelay, Modulation-Vss ...
+ * - bugfix transmit-logic
+ * + configuration: TXDelay, Modulation-Vss ...
  */
 
 
 #include "defines.h"		// general defines
 #include "hw_defs.h"		// PTT-Macro
+#include "dac_func.h"
 #include "crc.h"
 #include "rptr_func.h"		// realtime-handler part of HF I/O
 #include "slowdata.h"		// later used on own (idle) transmittings
+#include "gmsk_func.h"		// configuration
 #include "controls.h"
 
 #include "gpio_func.h"		// GPIO-functions and macros (PTT, LEDs...)
@@ -95,13 +98,29 @@ typedef struct PACKED_DATA {
 
 
 typedef enum {
-  RPTR_GET_STATUS=0x10, RPTR_GET_VERSION, RPTR_GET_CONFIG, RPTR_SET_CONFIG,
-  RPTR_RXPREAMBLE, RPTR_START, RPTR_HEADER, RPTR_RXSYNC, RPTR_DATA, RPTR_EOT,
-  RPTR_RXLOST
+  RPTR_GET_STATUS=0x10, RPTR_GET_VERSION, RPTR_GET_SERIAL, RPTR_GET_CONFIG,
+  RPTR_SET_CONFIG, RPTR_RXPREAMBLE, RPTR_START, RPTR_HEADER,
+  RPTR_RXSYNC, RPTR_DATA, RPTR_EOT, RPTR_RXLOST,
+  RPTR_MSG_RSVD1, RPTR_MSG_RSVD2, RPTR_MSG_RVSD3, RPTR_SET_TESTMDE
 } tRPTRcmds;
 
 
+#define STA_RXENABLE_MASK	0x01
+#define STA_TXENABLE_MASK	0x02
+#define STA_WDENABLE_MASK	0x04
+#define STA_CRCENABLE_MASK	0x08
+#define STA_IO21_STATE		0x10
+#define STA_IO23_STATE		0x20
+#define STA_NOCONFIG_MASK	0x80
+
+#define STA_RECEIVING		0x01
+#define STA_TRANSMITTING	0x02
+#define STA_PCWATCHDOG		0x04
+
 // *** Globale Variablen ***
+
+U8		status_control =  STA_NOCONFIG_MASK;	// Holds persitent control-flags
+U8		status_state;	// Holds state of RX/TX
 
 // functions used for pc/gateway communication:
 // pre-initialisation to USB-CDC, but easy reconfigurable to RS232
@@ -148,12 +167,109 @@ void pc_fill_answer(void) {
 }
 
 
+void update_status(void) {
+#ifdef DVRPTR
+  if (gpio0_readpin(EXP_IO21_PIN))
+    status_control &= ~STA_IO21_STATE;
+  else
+    status_control |= STA_IO21_STATE;
+  if (gpio0_readpin(EXP_IO23_PIN))
+    status_control &= ~STA_IO23_STATE;
+  else
+    status_control |= STA_IO23_STATE;
+#endif
+  status_state = 0;
+  if (RPTR_is_set(RPTR_RECEIVING))    status_state |= STA_RECEIVING;
+  if (RPTR_is_set(RPTR_TRANSMITTING)) status_state |= STA_TRANSMITTING;
+}
+
+
+// configuration routines - physical config
+typedef struct PACKED_DATA {
+  unsigned char flags;
+  unsigned char mod_level;
+  unsigned short txdelay;	// attention: little-endian here!
+} t_config_0;
+
+#define C0FLAG_RXINVERS		0x01
+#define C0FLAG_TXINVERS		0x02
+#define C0FLAG_CHAN_B		0x04
+
+t_config_0 CONFIG_C0 = {
+    0x00,			// flags
+    100 * 256 / V_Ref_5,	// modulation voltage peak-peak ~ 1.00V
+    GMSK_STDTXDELAY<<8		// little endian!
+};
+
+
+char *cfg_read_c0(char *config_buffer) {
+  config_buffer[0] = 0xC0;			// identifier byte
+  config_buffer[1] = sizeof(CONFIG_C0);		// length
+  memcpy(config_buffer + 2, &CONFIG_C0, sizeof(CONFIG_C0));
+  return config_buffer + 2 + sizeof(CONFIG_C0);
+}
+
+
+void cfg_write_c0(const char *config_data) {
+  memcpy(&CONFIG_C0, config_data, sizeof(CONFIG_C0));
+  // Receive Inversion
+  gmsk_demodulator_invert(CONFIG_C0.flags & C0FLAG_RXINVERS);
+  // Transmitter Inversion
+  gmsk_set_mod_hub(((CONFIG_C0.flags & C0FLAG_TXINVERS)?-1:1) * GMSK_DEFAULT_BW);
+  // Select Channel A or B from Dual DAC (FSK/AFSK on connector)
+  dac_set_active_ch((CONFIG_C0.flags & C0FLAG_CHAN_B)?1:0);
+  // adjust modulation level
+  set_chA_level(CONFIG_C0.mod_level);
+  set_chB_level(CONFIG_C0.mod_level);
+  // setup delay before modulation
+  gmsk_set_txdelay(swap16(CONFIG_C0.txdelay));
+  status_control &= ~STA_NOCONFIG_MASK;		// clear no-config bit
+}
+
+
+bool config_setup(const char *config_data, int len) {
+  if (len == 0) return false;
+  while (len > 0) {
+    U8 block_len = config_data[1];
+    switch (config_data[0]) {
+    case 0xC0:
+      if (block_len==sizeof(CONFIG_C0)) cfg_write_c0(config_data+2); else return false;
+      break;
+    default:
+      // ignore other config blocks
+      break;
+    } // hctiews
+    if ((block_len-2) > len) {	// get next block
+      len -= block_len + 2;
+      config_data += block_len + 2;
+    } else len = 0;
+  } // ehliw all blocks
+  return true;
+}
+
+
 // handle_serial_paket()
 // verarbeitet "paket" mit len optionalen Daten (Header NICHT mitgerechnet).
 __inline void handle_pc_paket(int len) {
   answer.head.len = 0;			// no answer.
   switch (rxdatapacket.head.cmd) {	// Kommando-Byte
   case RPTR_GET_STATUS:
+    pc_fill_answer();
+    if (len==1) {			// request
+      update_status();
+      answer.data[PKT_PARAM_IDX+0] = status_control;
+      answer.data[PKT_PARAM_IDX+1] = status_state;
+      answer.data[PKT_PARAM_IDX+2] = 0;	// ToDo TX-State
+      answer.data[PKT_PARAM_IDX+3] = VoiceRxBufSize;
+      answer.data[PKT_PARAM_IDX+4] = VoiceTxBufSize;
+      answer.data[PKT_PARAM_IDX+5] = rptr_get_unsend();	// unsend frames left (incl. gaps)
+      answer.head.len = 7;
+    } else if (len==2) {		// enable/disable
+      status_control = (status_control & 0xF0) | (rxdatapacket.data[PKT_PARAM_IDX] & 0x0F);
+      pc_send_byte(ACK);
+    } else {				// invalid - more than one parameter byte
+      pc_send_byte(NAK);
+    }
     break;
   case RPTR_GET_VERSION:
     pc_fill_answer();
@@ -162,8 +278,37 @@ __inline void handle_pc_paket(int len) {
     memcpy(answer.data+PKT_PARAM_IDX+2, VERSION_IDENT, sizeof(VERSION_IDENT));
     answer.head.len = sizeof(VERSION_IDENT)+3-1;	// cut String-Terminator /0
     break;
+  case RPTR_GET_SERIAL:
+    pc_fill_answer();
+    memcpy(answer.data+PKT_PARAM_IDX, (void *)SERIALNUMBER_ADDRESS, 4);
+    answer.head.len = 5;
+    break;
   case RPTR_GET_CONFIG:
+    pc_fill_answer();
+    if (len==1) {			// request all config
+      char *nextblock = cfg_read_c0(answer.data+PKT_PARAM_IDX);
+      //...
+      answer.head.len = nextblock - answer.data - 3;
+    } else if (len==2) {		// request a single block
+      switch(rxdatapacket.data[PKT_PARAM_IDX]) {
+      case 0xC0:
+	cfg_read_c0(answer.data+PKT_PARAM_IDX);
+	answer.head.len = sizeof(CONFIG_C0)+3;
+	break;
+      default:
+	pc_send_byte(NAK);
+	break;
+      }
+    } else {
+      pc_send_byte(NAK);
+    }
+    break;
   case RPTR_SET_CONFIG:
+    if (config_setup(rxdatapacket.data+PKT_PARAM_IDX, len-1)) {
+      pc_send_byte(ACK);
+    } else {
+      pc_send_byte(NAK);
+    }
     break;
   case RPTR_START:		// early Turn-On xmitter, if configured a long TXD
     rptr_transmit_early_start(); // PTTon, only if TXD > Header-TX-Lengh 137.5ms
@@ -184,6 +329,13 @@ __inline void handle_pc_paket(int len) {
     break;
   case RPTR_EOT:		// end transmission with EOT tail
     rptr_endtransmit();
+    break;
+  case RPTR_SET_TESTMDE:
+    pc_fill_answer();
+    if (len==2) {
+      // ToDo Enable / Disable Transmitter Testmode!
+      pc_send_byte(ACK);
+    } else pc_send_byte(NAK);
     break;
   default:
     pc_fill_answer();
@@ -326,8 +478,8 @@ int main(void) {
 
   // Replace with SETUP later...
   set_dac_power_mode(TWI_DAC_POWERUP);	// Enable Reference-DAC MAX5820
-  set_chA_level(100 * 256 / V_Ref_5);	// Set Vss to 1.00V
-  set_chB_level(100 * 256 / V_Ref_5);
+  set_chA_level(CONFIG_C0.mod_level);	// Set Vss to 1.00V
+  set_chB_level(CONFIG_C0.mod_level);
 
   rptr_receive();			// enable receiving.
 

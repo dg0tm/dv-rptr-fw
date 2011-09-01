@@ -29,6 +29,11 @@
 
 #include "dv_dstar.h"
 
+#define	VoiceTxBufSize	(12*DSTAR_SYNCINTERVAL)		// Size of VoiceBuf
+
+#define VoiceRxBufSize	DSTAR_SYNCINTERVAL		// Fixed to one sync
+
+
 extern unsigned int RPTR_Flags;
 // Receive Flags (checked in handle_hfdata()) Bit 0..7
 #define RPTR_RX_START		0x01
@@ -37,8 +42,12 @@ extern unsigned int RPTR_Flags;
 #define RPTR_RX_SYNC		0x08
 #define RPTR_RX_FRAME		0x10
 #define RPTR_RX_HEADER		0x20
+
+#define RPTR_RECEIVING		0x80	// permanent indicator, don't clear flag
+
 // Transmit Flags Bit 8..15
 #define RPTR_TX_EARLYPTT	0x0100
+#define RPTR_TRANSMITTING	0x8000	// permanent indicator, don't clear flag
 
 #define RPTR_is_set(f)		(RPTR_Flags&f)
 #define RPTR_clear(f)		(RPTR_Flags &= ~f)
@@ -93,9 +102,10 @@ void	rptr_transmit_data(void);
 void	rptr_endtransmit(void);
 
 // Adds a voice paket into the transmit-voice-buffer on position pkt_nr.
-// If pkt_nr is not in 0..20, the pkt is stored as last one (newest).
+// If pkt_nr is not in 0..VoiceTxBufSize, the pkt is stored as last one (newest).
 void	rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr);
 
+unsigned char rptr_get_unsend(void);
 
 char	*rptr_getheader(void);
 

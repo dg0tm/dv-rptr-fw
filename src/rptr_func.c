@@ -44,8 +44,6 @@
 #include <string.h>
 
 
-#define DSTAR_SYNCINTERVAL	21
-
 #define DSTAR_SYNC		0x552D1600
 #define DSTAR_SYNCMSK		0xFFFFFF00
 #define DSTAR_SCRAMDATA		0x0EF2C902
@@ -92,13 +90,12 @@ static unsigned long	DStar_HeaderBS[DSTAR_HEADERBSBUFSIZE];	// Header Bitstream 
 static unsigned long	DStar_RxHeader[DSTAR_HEADERBSBUFSIZE];	// Received Header Bitstream
 
 
-#define	VoiceBufSize	DSTAR_SYNCINTERVAL		// Size of VoiceBuf
-
-ALIGNED_DATA static tds_voicedata	DStar_RxVoice[VoiceBufSize];
-ALIGNED_DATA static tds_voicedata	DStar_TxVoice[VoiceBufSize];
+ALIGNED_DATA static tds_voicedata	DStar_RxVoice[VoiceRxBufSize];
+ALIGNED_DATA static tds_voicedata	DStar_TxVoice[VoiceTxBufSize];
 
 
-unsigned char	RPTR_RxFrameCount;	// Count from 0 to 21 or until RPTR_MAX_PKT_WO_SYNC
+unsigned int	RPTR_RxFrameCount;	// Count continously upwards
+unsigned int	RPTR_RxLastSync;	// Keeps the Number of Last-Sync
 unsigned int	RPTR_TxFrameCount;	// Count continously
 
 unsigned int	TxVoice_RdPos, TxVoice_WrPos;
@@ -122,20 +119,20 @@ void dstar_scramble_data(tds_voicedata *dest) {
 
 
 // Abfrage, ob Daten-Bytes == FrameSyncDaten
-__inline int rptr_syncpaket(const tds_voicedata *rxdata) {
+__inline int rptr_is_syncpaket(const tds_voicedata *rxdata) {
   return ((rxdata->packet[2]&DSTAR_SYNCMSK) == DSTAR_SYNC);
 }
 
 
 __inline void rptr_tx_preamble(void) {
   gmsk_transmit((U32 *)preamble_dstar, DSTAR_PREAMPLELEN, 1);
+  RPTR_Flags |= RPTR_TRANSMITTING;
   LED_Set(LED_RED);
 }
 
 
 __inline void rptr_tx_stop(void) {
-  gmsk_transmit((U32 *)lastframe_dstar, DSTAR_LASTFRAMEBITSIZE_TX, DSTAR_LASTFRAMEBITSIZE);
-  LED_Clear(LED_RED);
+  gmsk_transmit((U32 *)lastframe_dstar, DSTAR_LASTFRAMEBITSIZE_TX, DSTAR_LASTFRAMEBITSIZE_TX-1);
 }
 
 
@@ -149,18 +146,20 @@ __inline void rptr_tx_stop(void) {
 void rptr_stopped(void) {
   gmsk_set_reloadfunc(NULL);
   disable_ptt();
+  RPTR_Flags &= ~RPTR_TRANSMITTING;
+  LED_Clear(LED_RED);
 }
 
 
 void rptr_transmit_stopframe(void) {
   gmsk_set_reloadfunc(&rptr_stopped);
   rptr_tx_stop();
-  RPTR_clear(RPTR_TX_EARLYPTT); // If PTT active from EarlySTART
+  RPTR_clear(RPTR_TX_EARLYPTT);		// If PTT active from EarlySTART
 }
 
 
 void rptr_transmit_voicedata(void) {
-#if VoiceBufSize!=DSTAR_SYNCINTERVAL
+#if VoiceTxBufSize != DSTAR_SYNCINTERVAL
   int cycle = TxVoice_RdPos%DSTAR_SYNCINTERVAL;
 #else
 #define cycle	TxVoice_RdPos
@@ -171,8 +170,8 @@ void rptr_transmit_voicedata(void) {
   } else {
     tds_voicedata *voicedat = &DStar_TxVoice[TxVoice_RdPos];
     // replace voice data, currently transmitting with Silence
-    tds_voicedata *voicejusttxed = &DStar_TxVoice[(TxVoice_RdPos+VoiceBufSize-1) % VoiceBufSize];
-    TxVoice_RdPos = (TxVoice_RdPos+1) % VoiceBufSize;
+    tds_voicedata *voicejusttxed = &DStar_TxVoice[(TxVoice_RdPos+VoiceTxBufSize-1) % VoiceTxBufSize];
+    TxVoice_RdPos = (TxVoice_RdPos+1) % VoiceTxBufSize;
     if (cycle==0) {		// Sync-Daten in SendeBuffer
       dstar_insert_sync(voicedat);
 #ifdef PLAIN_SLOWDATA
@@ -201,16 +200,17 @@ void rptr_transmit_header(void) {
 }
 
 
-
 void rptr_restart_header(void) {
   gmsk_set_reloadfunc(&rptr_transmit_header);	// unmittelbar Header hinter
   gmsk_transmit((U32 *)&preamble_dstar[4], 15, 1);
 }
 
+
 void rptr_begin_new_tx(void) {
   gmsk_set_reloadfunc(&rptr_restart_header);
   rptr_tx_stop();
 }
+
 
 void rptr_break_current(void) {
   if (TxVoice_RdPos == TxVoice_WrPos) {	// last voice frame?
@@ -225,55 +225,75 @@ void rptr_break_current(void) {
 
 // *** Demodulator Handler ***
 
-
 void rptr_receivedframe(void) {
-  U8 cycle = RPTR_RxFrameCount%DSTAR_SYNCINTERVAL;
-  RPTR_RxFrameCount++;
-  if (RPTR_RxFrameCount < RPTR_MAX_PKT_WO_SYNC) {	// stopps rx if no sync
-    gmsk_set_receivebuf(DStar_RxVoice[RPTR_RxFrameCount%DSTAR_SYNCINTERVAL].packet, DSTAR_FRAMEBITSIZE);
+  U8 cycle = (RPTR_RxFrameCount-RPTR_RxLastSync) % DSTAR_SYNCINTERVAL;
+  U8 index = (RPTR_RxFrameCount+1) % VoiceRxBufSize;	// position of next frame
+  // now setuo gmsk receiver to catch next frame:
+  if ((RPTR_RxFrameCount-RPTR_RxLastSync) < RPTR_MAX_PKT_WO_SYNC) {
+    gmsk_set_receivebuf(DStar_RxVoice[index].packet, DSTAR_FRAMEBITSIZE);
     RPTR_Flags |= RPTR_RX_FRAME;
-  } else {				// fi Valid Data
+  } else {				// fi valid data
     RPTR_Flags |= RPTR_RX_LOST;
+    RPTR_Flags &= ~RPTR_RECEIVING;
     LED_Clear(LED_GREEN);
-  }
-  if ( cycle==0 ) {	// Every 21 frame
-    if (rptr_syncpaket(&DStar_RxVoice[cycle])) {
-      RPTR_RxFrameCount = 0;
+  } // esle
+  index = RPTR_RxFrameCount%VoiceRxBufSize;		// index points now to current
+  if (cycle == 0) {					// is a frame-sync expected?
+    if (rptr_is_syncpaket(&DStar_RxVoice[index])) {
+      RPTR_RxLastSync = RPTR_RxFrameCount;		// update sync pos cnt
     } else {
       DStar_LostSyncCounter++;
     }
+  } // fi must be a frame-sync
 #ifdef PLAIN_SLOWDATA
-  } else { // fi
-    dstar_scramble_data(&DStar_RxVoice[cycle]);	// Unscramble 3byte slow data
+  dstar_scramble_data(&DStar_RxVoice[index]);		// Unscramble 3byte slow data
 #endif
-  }
-}
-
-
-void rptr_receivedframesync(void) {
-  //A Voice-Frame with a Sync-Pattern 0101010111010001101000 stored in position [0]
-  gmsk_set_receivebuf(DStar_RxVoice[1].packet, DSTAR_FRAMEBITSIZE);
-  gmsk_set_receivefkt(&rptr_receivedframe);
-  RPTR_RxFrameCount = 1;
-  RPTR_Flags |= RPTR_RX_SYNC;
-  LED_Set(LED_GREEN);
+  RPTR_RxFrameCount++;					// increase counter
 }
 
 
 void rptr_receivedhdr(void) {
   gmsk_set_receivebuf(DStar_RxVoice[0].packet, DSTAR_FRAMEBITSIZE);
   gmsk_set_receivefkt(&rptr_receivedframe);
-  RPTR_RxFrameCount = 0;
-  DStar_LostSyncCounter = 0;
   RPTR_Flags |= RPTR_RX_HEADER;
 }
 
 
-// Handler to Receive Header in Mem-Buffer
+/* rptr_receivedframesync()
+ * called every time, if a FRAMESYNC pattern is found in the rx bitstream
+ * (after a call of rptr_receivedframe(), if all ok
+ */
+void rptr_receivedframesync(void) {
+  // A Voice-Frame with a Sync-Pattern 0101010111010001101000 was detected
+  RPTR_Flags |= RPTR_RX_SYNC;
+  if (RPTR_is_set(RPTR_RECEIVING)) {
+    if ((RPTR_RxFrameCount-RPTR_RxLastSync) > DSTAR_SYNCINTERVAL) {
+      RPTR_RxLastSync = RPTR_RxFrameCount-1;	// update sync pos cnt
+    }
+  } else {
+    RPTR_Flags |= RPTR_RECEIVING;
+    // first update receive-buffer to store the voice data, if no header rxed before:
+    // this enables receiving (after DSTAR_FRAMEBITSIZE a rptr_receivedframe() occurs)
+    gmsk_set_receivebuf(DStar_RxVoice[0].packet, DSTAR_FRAMEBITSIZE);
+    gmsk_set_receivefkt(&rptr_receivedframe);
+    RPTR_RxFrameCount = 0;	// reset counters
+    RPTR_RxLastSync   = 0;
+    DStar_LostSyncCounter = 0;
+    LED_Set(LED_GREEN);
+  }
+}
+
+
+
+// Handler to Receive Header in Mem-Buffer (DStar_RxHeader)
 void rptr_getrxheader(void) {
   gmsk_set_receivebuf(DStar_RxHeader, DSTAR_HEADEROUTBITSIZE);
   gmsk_set_receivefkt(&rptr_receivedhdr);
-  RPTR_Flags |= RPTR_RX_START;
+  RPTR_RxFrameCount = 0;	// reset counters
+  RPTR_RxLastSync   = 0;
+  DStar_LostSyncCounter = 0;
+  RPTR_Flags |= RPTR_RECEIVING|RPTR_RX_START;	// a new transmission starts
+  LED_Set(LED_GREEN);
 }
 
 
@@ -282,12 +302,13 @@ void rptr_gotstopframe(void) {
   gmsk_set_receivebuf(NULL, 0);
   gmsk_set_receivefkt(NULL);
   RPTR_Flags |= RPTR_RX_STOP;
+  RPTR_Flags &= ~RPTR_RECEIVING;
   LED_Clear(LED_GREEN);
 }
 
 //! @}
 
-/*! \name DSTAR API Functions
+/*! \name Repeater API Functions
  */
 //! @{
 
@@ -304,7 +325,7 @@ void rptr_init_data(void) {
   U8 cnt;
   rptr_update_header();
   RPTR_Flags = 0;
-  for (cnt=0; cnt<VoiceBufSize; cnt++) {
+  for (cnt=0; cnt<VoiceTxBufSize; cnt++) {
     memcpy(&DStar_TxVoice[cnt], SilenceFrame, sizeof(tds_voicedata));
   }
 }
@@ -398,14 +419,14 @@ char *rptr_getheader(void) {
 
 
 unsigned char rptr_copycurrentrxvoice(tds_voicedata *dest) {
-  U8 pkt = (RPTR_RxFrameCount+(VoiceBufSize-1))%VoiceBufSize;
+  U8 pkt = (RPTR_RxFrameCount+(VoiceRxBufSize-1))%VoiceRxBufSize;
   memcpy(dest, DStar_RxVoice[pkt].packet, sizeof(tds_voicedata));
   return pkt;
 }
 
 
 void rptr_copyrxvoice(tds_voicedata *dest, unsigned char nr) {
-  memcpy(dest, DStar_RxVoice[nr%VoiceBufSize].packet, sizeof(tds_voicedata));
+  memcpy(dest, DStar_RxVoice[nr%VoiceRxBufSize].packet, sizeof(tds_voicedata));
 }
 
 
@@ -466,25 +487,29 @@ void rptr_endtransmit(void) {
 
 
 void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
-  if (pkt_nr < VoiceBufSize) {	// a numbered packet (00..20)
+  if (pkt_nr < VoiceTxBufSize) {	// a numbered packet (0..max buf size-1)
     // a numbered packet in the empty buffer area results in an update of WrPos
     // (last packet). Gaps are initialized with Silence.
     if ( ((TxVoice_WrPos > TxVoice_RdPos) &&
 	 ((pkt_nr > TxVoice_WrPos)||(pkt_nr < TxVoice_RdPos))) ||
 	 ((TxVoice_WrPos < TxVoice_RdPos) &&
  	 ((pkt_nr > TxVoice_WrPos)&&(pkt_nr < TxVoice_RdPos))) ) {
-      TxVoice_WrPos = (pkt_nr+1) % VoiceBufSize;
+      TxVoice_WrPos = (pkt_nr+1) % VoiceTxBufSize;
     }
   } else {			// a new packet (w/o number)
     pkt_nr = TxVoice_WrPos;
-    TxVoice_WrPos = (TxVoice_WrPos+1) % VoiceBufSize;
+    TxVoice_WrPos = (TxVoice_WrPos+1) % VoiceTxBufSize;
   }
   if (TxVoice_RdPos == TxVoice_WrPos) {	// overflow!!!
-    TxVoice_RdPos = (TxVoice_RdPos+1) % VoiceBufSize;
+    TxVoice_RdPos = (TxVoice_RdPos+1) % VoiceTxBufSize;
   }
   memcpy(&DStar_TxVoice[pkt_nr], buf, sizeof(tds_voicedata));
 }
 
+
+unsigned char rptr_get_unsend(void) {
+  return (TxVoice_WrPos+VoiceTxBufSize-TxVoice_RdPos) % VoiceTxBufSize;
+}
 
 
 //! @}
