@@ -38,9 +38,14 @@
  * 		     No CRC needed on USB (control with bool var 'rx_crc_disabled'
  *
  * 2011-08-30 V0.05  first version for DV-RPTR Target, w/o setup. cmd VERSION works
- * 2011-08-30 V0.06  large transmit buffer, new - I hope final - CMD set
+ * 2011-09-01 V0.06  large transmit buffer, new - I hope final - CMD set
+ * 2011-0902  V0.07  Checksum enable-function
  *
  * ToDo:
+ * - enable / disable receiver (if disabled keep firmware alive by a idle-counter)
+ * - enable / disable transmitter (logic only, return NAK on START / SYNC cmd if off)
+ * - Transmitter-State enumaration for GET_STATUS
+ * - PC watchdog
  * - first SYNC detect -> Message (early switch on Transceiver)
  * - bugfix transmit-logic
  * + configuration: TXDelay, Modulation-Vss ...
@@ -128,7 +133,6 @@ tdata_rx_fct	data_received	= cdc_received;
 tdata_cpy_rx	data_copyrx	= cdc_copyblock;
 tdata_tx_fct	data_transmit	= cdc_transmit;
 tfunction	data_flushrx	= cdc_flushrx;
-bool		rx_crc_disabled = true;
 
 
 
@@ -191,6 +195,7 @@ typedef struct PACKED_DATA {
   unsigned short txdelay;	// attention: little-endian here!
 } t_config_0;
 
+#define MAX_ALLOWED_TXDELAY	6000	// 6s
 #define C0FLAG_RXINVERS		0x01
 #define C0FLAG_TXINVERS		0x02
 #define C0FLAG_CHAN_B		0x04
@@ -200,6 +205,24 @@ t_config_0 CONFIG_C0 = {
     100 * 256 / V_Ref_5,	// modulation voltage peak-peak ~ 1.00V
     GMSK_STDTXDELAY<<8		// little endian!
 };
+
+
+void cfg_apply(void) {
+  U16 txd;
+  // Receive Inversion
+  gmsk_demodulator_invert(CONFIG_C0.flags & C0FLAG_RXINVERS);
+  // Transmitter Inversion
+  gmsk_set_mod_hub(((CONFIG_C0.flags & C0FLAG_TXINVERS)?-1:1) * GMSK_DEFAULT_BW);
+  // Select Channel A or B from Dual DAC (FSK/AFSK on connector)
+  dac_set_active_ch((CONFIG_C0.flags & C0FLAG_CHAN_B)?1:0);
+  // adjust modulation level
+  set_chA_level(CONFIG_C0.mod_level);
+  set_chB_level(CONFIG_C0.mod_level);
+  // setup delay before modulation
+  txd = swap16(CONFIG_C0.txdelay);
+  if (txd > MAX_ALLOWED_TXDELAY) txd = MAX_ALLOWED_TXDELAY;
+  gmsk_set_txdelay(txd);
+}
 
 
 char *cfg_read_c0(char *config_buffer) {
@@ -212,17 +235,7 @@ char *cfg_read_c0(char *config_buffer) {
 
 void cfg_write_c0(const char *config_data) {
   memcpy(&CONFIG_C0, config_data, sizeof(CONFIG_C0));
-  // Receive Inversion
-  gmsk_demodulator_invert(CONFIG_C0.flags & C0FLAG_RXINVERS);
-  // Transmitter Inversion
-  gmsk_set_mod_hub(((CONFIG_C0.flags & C0FLAG_TXINVERS)?-1:1) * GMSK_DEFAULT_BW);
-  // Select Channel A or B from Dual DAC (FSK/AFSK on connector)
-  dac_set_active_ch((CONFIG_C0.flags & C0FLAG_CHAN_B)?1:0);
-  // adjust modulation level
-  set_chA_level(CONFIG_C0.mod_level);
-  set_chB_level(CONFIG_C0.mod_level);
-  // setup delay before modulation
-  gmsk_set_txdelay(swap16(CONFIG_C0.txdelay));
+  cfg_apply();
   status_control &= ~STA_NOCONFIG_MASK;		// clear no-config bit
 }
 
@@ -365,7 +378,7 @@ void handle_pcdata(void) {
     if (rxdatapacket.head.id == FRAMESTARTID) {
       U16 pkt_crc = 0;
       U16 framelen = swap16(rxdatapacket.head.len);
-      if (!rx_crc_disabled) {	// check CRC only, if needed.
+      if (status_control&STA_CRCENABLE_MASK) {	// check CRC only, if needed.
 	pkt_crc = crc_ccitt(rxdatapacket.data, framelen+5);
       } // fi check CRC
       if ((framelen <= rxbytes) && (pkt_crc==0)) {
@@ -379,15 +392,15 @@ void handle_pcdata(void) {
 /* handle_hfdata() processes bit-flags from rptr_func
  * A typical reception look like this:
  *
- * D0 | 03 00 | 14 | 00 00 crc crc	>Preamble detected (not implemented jet)
- * D0 | 03 00 | 15 | 01 00 crc crc	>Start-Frame-Pattern detected
- * D0 | 2C 00 | 16 | 01 00 {header data} crc crc
+ * D0 | 03 00 | 15 | 00 00 crc crc	>Preamble detected (not implemented jet)
+ * D0 | 03 00 | 16 | 01 00 crc crc	>Start-Frame-Pattern detected
+ * D0 | 2C 00 | 17 | 01 00 {header data} crc crc
  *                      ^ Biterrors in header (not implemented jet)
- * D0 | 0F 00 | 18 | 01 00 {VoiceData} 55 2D 16 crc crc > Voicedata with FrameSync
- *                      ^ pktcount 0 to 20
- * D0 | 0F 00 | 18 | 01 01 {VoiceData} {SlowData} crc crc > Slowdata not descrambled
+ * D0 | 0F 00 | 19 | 01 00 {VoiceData} 55 2D 16 crc crc > Voicedata with FrameSync
+ *                      ^ pktcount 0 to 20 (defined by VoiceRxBufSize)
+ * D0 | 0F 00 | 19 | 01 01 {VoiceData} {SlowData} crc crc > Slowdata not descrambled
  * ...
- * D0 | 03 00 | 19 | 01 00 crc crc	> End of Transmission
+ * D0 | 03 00 | 1A | 01 00 crc crc	> End of Transmission
  *                   ^ transmission counter 1..255,0
  *              ^ cmd / type of paket ( = part of pkt-data )
  *      ^ Length of Data (packetlength-5)
@@ -476,16 +489,14 @@ int main(void) {
   Enable_global_interrupt();		// Enable all interrupts.
   LEDs_Off();
 
-  // Replace with SETUP later...
   set_dac_power_mode(TWI_DAC_POWERUP);	// Enable Reference-DAC MAX5820
-  set_chA_level(CONFIG_C0.mod_level);	// Set Vss to 1.00V
-  set_chB_level(CONFIG_C0.mod_level);
+  cfg_apply();				// setup default config
 
   rptr_receive();			// enable receiving.
 
   while (TRUE) {			// *** Main-Loop ***
     SLEEP();				// do nothing, until some IRQ wake the CPU
-    watchdog();				// do external watchdog for ST706T
+    watchdog();				// do external watchdog for STM706T
 
     handle_hfdata();			// look, if something to do with the HF interface
 
