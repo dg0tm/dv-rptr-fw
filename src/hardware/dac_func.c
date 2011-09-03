@@ -24,6 +24,8 @@
  *
  * Report:
  * 2011-08-30	Remove AD5260 single DAC code (used on DV-Modem)...
+ * 2011-09-03	MODFDIS bit @ dac_init()
+ *
  */
 
 
@@ -61,7 +63,8 @@ void dac_init(void) {
   // ToDo: pm_enable-SPI()...
   AVR32_SPI.cr = AVR32_SPI_CR_SWRST_MASK;	// Reset
   // Master Mode, no Peripheral Selected
-  AVR32_SPI.mr = (1<<AVR32_SPI_MR_DLYBCS_OFFSET)|(0x0f<<AVR32_SPI_MR_PCS_OFFSET)|AVR32_SPI_MSTR_MASK;
+  AVR32_SPI.mr = (1<<AVR32_SPI_MR_DLYBCS_OFFSET)|(0x0f<<AVR32_SPI_MR_PCS_OFFSET)|	\
+    AVR32_SPI_MSTR_MASK | AVR32_SPI_MODFDIS_MASK;
 #if (SPI_CS==0)
   AVR32_SPI.csr0 = spi_csr;
 #elif (SPI_CS==1)
