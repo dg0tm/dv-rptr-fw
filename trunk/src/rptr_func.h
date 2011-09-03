@@ -47,9 +47,11 @@ extern unsigned int RPTR_Flags;
 
 // Transmit Flags Bit 8..15
 #define RPTR_TX_EARLYPTT	0x0100
+#define RPTR_TX_TESTLOOP	0x4000
 #define RPTR_TRANSMITTING	0x8000	// permanent indicator, don't clear flag
 
 #define RPTR_is_set(f)		(RPTR_Flags&f)
+#define RPTR_set(f)		(RPTR_Flags |= f)
 #define RPTR_clear(f)		(RPTR_Flags &= ~f)
 
 

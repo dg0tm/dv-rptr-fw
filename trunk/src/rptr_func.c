@@ -193,10 +193,26 @@ void rptr_transmit_voicedata(void) {
 }
 
 
+void rptr_transmit_testloop(void) {	// Looping Transmit RXVoice Buffer
+  if (RPTR_is_set(RPTR_TX_TESTLOOP)) {
+    tds_voicedata *voicedat = &DStar_RxVoice[TxVoice_RdPos];
+    gmsk_transmit(voicedat->packet, DSTAR_FRAMEBITSIZE, DSTAR_FRAMEBITSIZE-DSTAR_BEFOREFRAMEENDS);
+    TxVoice_RdPos = (TxVoice_RdPos+1) % VoiceRxBufSize;
+  } else {
+    gmsk_transmit((U32 *)&SilenceFrame, DSTAR_VOICEFRAMEBITSIZE, 1);
+    gmsk_set_reloadfunc(&rptr_transmit_stopframe);
+  }
+}
+
+
+
 void rptr_transmit_header(void) {
   gmsk_transmit((U32 *)&DStar_HeaderBS, DSTAR_HEADEROUTBITSIZE, DSTAR_HEADEROUTBITSIZE-DSTAR_BEFOREFRAMEENDS);
   RPTR_TxFrameCount = 0;
-  gmsk_set_reloadfunc(&rptr_transmit_voicedata);
+  if (RPTR_is_set(RPTR_TX_TESTLOOP))
+    gmsk_set_reloadfunc(&rptr_transmit_testloop);
+  else
+    gmsk_set_reloadfunc(&rptr_transmit_voicedata);
 }
 
 

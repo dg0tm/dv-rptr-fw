@@ -39,7 +39,8 @@
  *
  * 2011-08-30 V0.05  first version for DV-RPTR Target, w/o setup. cmd VERSION works
  * 2011-09-01 V0.06  large transmit buffer, new - I hope final - CMD set
- * 2011-0902  V0.07  Checksum enable-function
+ * 2011-09-02 V0.07  Checksum enable-function
+ * 2011-09-03 V0.08  MODFDIS bit @ dac_init(), Test-Loop (0x1F cmd)
  *
  * ToDo:
  * - enable / disable receiver (if disabled keep firmware alive by a idle-counter)
@@ -47,7 +48,7 @@
  * - Transmitter-State enumaration for GET_STATUS
  * - PC watchdog
  * - first SYNC detect -> Message (early switch on Transceiver)
- * - bugfix transmit-logic
+ * + bugfix transmit-logic
  * + configuration: TXDelay, Modulation-Vss ...
  */
 
@@ -346,8 +347,18 @@ __inline void handle_pc_paket(int len) {
   case RPTR_SET_TESTMDE:
     pc_fill_answer();
     if (len==2) {
-      // ToDo Enable / Disable Transmitter Testmode!
-      pc_send_byte(ACK);
+      if (rxdatapacket.data[PKT_PARAM_IDX]&0x01) {
+	if (RPTR_is_set(RPTR_RECEIVING)) {
+	  pc_send_byte(NAK);
+	} else {
+	  RPTR_set(RPTR_TX_TESTLOOP);
+          rptr_transmit();		// Turn on Xmitter
+	  pc_send_byte(ACK);
+	}
+      } else {	// disable Test Mode
+	RPTR_clear(RPTR_TX_TESTLOOP);
+        pc_send_byte(ACK);
+      }
     } else pc_send_byte(NAK);
     break;
   default:
