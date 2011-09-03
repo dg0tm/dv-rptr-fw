@@ -41,11 +41,12 @@
  * 2011-09-01 V0.06  large transmit buffer, new - I hope final - CMD set
  * 2011-09-02 V0.07  Checksum enable-function
  * 2011-09-03 V0.08  MODFDIS bit @ dac_init(), Test-Loop (0x1F cmd)
+ *                   bugfix handle_pcdata() length check
  *
  * ToDo:
  * - enable / disable receiver (if disabled keep firmware alive by a idle-counter)
  * - enable / disable transmitter (logic only, return NAK on START / SYNC cmd if off)
- * - Transmitter-State enumaration for GET_STATUS
+ * - Transmitter-State enumeration for GET_STATUS
  * - PC watchdog
  * - first SYNC detect -> Message (early switch on Transceiver)
  * + bugfix transmit-logic
@@ -392,7 +393,7 @@ void handle_pcdata(void) {
       if (status_control&STA_CRCENABLE_MASK) {	// check CRC only, if needed.
 	pkt_crc = crc_ccitt(rxdatapacket.data, framelen+5);
       } // fi check CRC
-      if ((framelen <= rxbytes) && (pkt_crc==0)) {
+      if ((framelen <= (rxbytes-5)) && (pkt_crc==0)) {
 	handle_pc_paket(framelen);
       } // fi correct / enough bytes received / crc ok
     } // fi correct ID
