@@ -42,6 +42,7 @@
  * 2011-09-02 V0.07  Checksum enable-function
  * 2011-09-03 V0.08  MODFDIS bit @ dac_init(), Test-Loop (0x1F cmd)
  *                   bugfix handle_pcdata() length check
+ * 2011-09-05 V0.09  rptr_addtxvoice() nummeration logic bugfix
  *
  * ToDo:
  * - enable / disable receiver (if disabled keep firmware alive by a idle-counter)
@@ -366,7 +367,7 @@ __inline void handle_pc_paket(int len) {
     pc_fill_answer();
     pc_send_byte(NAK);
     break;
-  }
+  } // hctiws
   if ((answer.head.len > 0)&&(answer.head.len<(PAKETBUFFERSIZE-4))) {
     U32 anslen = answer.head.len+5;
     answer.head.len = swap16(answer.head.len);
