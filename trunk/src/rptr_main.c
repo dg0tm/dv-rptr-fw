@@ -43,6 +43,8 @@
  * 2011-09-03 V0.08  MODFDIS bit @ dac_init(), Test-Loop (0x1F cmd)
  *                   bugfix handle_pcdata() length check
  * 2011-09-05 V0.09  rptr_addtxvoice() nummeration logic bugfix
+ * 2011-09-06 V0.10  gmsk: Additional Interrupt-Handler keeps critical Timer-based ADC-start, DAC-out
+ * 		     with a minimum of jitter in the case of duplex operation
  *
  * ToDo:
  * - enable / disable receiver (if disabled keep firmware alive by a idle-counter)

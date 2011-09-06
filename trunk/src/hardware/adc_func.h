@@ -39,6 +39,7 @@
 
 // ADC-Channel Definitionen:
 #define HFIN			AVR32_ADC.cdr7
+#define HFDATA_INT_MASK		AVR32_ADC_IER_EOC7_MASK
 #define RSSI_IN                 AVR32_ADC.cdr6
 #define HFIN_CHANNEL            0x80
 #define RSSI_CHANNEL            0x40

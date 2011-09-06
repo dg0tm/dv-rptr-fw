@@ -38,6 +38,8 @@
  * 2011-07-01	TX-Delay / Modulator-Werte werden nicht mehr gmsk_init() auf Default gesetzt
  * 2011-07-27	Duplex-Version, using 2 Timer
  * 2011-08-28	Fehlerbehebung Duplex
+ * 2011-09-06	Additional Interrupt-Handler keeps critical Timer-based ADC-start, DAC-out
+ * 		with a minimum of jitter in the case of duplex operation
  */
 
 
@@ -55,6 +57,7 @@
 
 #define GMSK_RX_TIMER		AVR32_TC.channel[DVRX_TIMER_CH]
 #define GMSK_RX_TIMER_IRQ	(AVR32_TC_IRQ0+DVRX_TIMER_CH)
+#define GMSK_GETSAMPLE_IRQ	AVR32_ADC_IRQ
 
 #define GMSK_TX_TIMER		AVR32_TC.channel[DVTX_TIMER_CH]
 #define GMSK_TX_TIMER_IRQ	(AVR32_TC_IRQ0+DVTX_TIMER_CH)
@@ -148,11 +151,28 @@ static __inline void gmsk_stop_txtimer(void) {
 INTERRUPT_FUNC gmsk_begin_int(void);	// forward
 
 
-INTERRUPT_FUNC gmsk_runidle_int(void) {
+INTERRUPT_FUNC gmsk_modulator_int(void) {
+  dac_modulate(modulator_out[gmsk_overcnt]);
   GMSK_TX_TIMER.sr;
+  GMSK_TX_TIMER.rc = GMSK_MOD_DEFAULT + gmsk_txpll_accu.u16[0];
+  gmsk_txpll_accu.u16[0] = 0;	// Clear Alternate-Bit
+  gmsk_txpll_accu.u32 += GMSK_MOD_PHASE;
+  if (++gmsk_overcnt >= GMSK_OVERSAMPLING) {
+    AVR32_SPI.ier = AVR32_SPI_IER_TXEMPTY_MASK;
+    gmsk_overcnt = 0;
+  } // fi every 4 times (oversampling)
+}
+
+
+
+INTERRUPT_FUNC gmsk_runidle_int(void) {
+  AVR32_SPI.idr = AVR32_SPI_IER_TXEMPTY_MASK;
+  AVR32_SPI.sr;
+/*  GMSK_TX_TIMER.sr;
   dac_modulate(modulator_out[gmsk_overcnt]);
   if (++gmsk_overcnt>=GMSK_OVERSAMPLING) {
     gmsk_overcnt = 0;
+*/
     if (gmsk_bittimer>0) {
       gmsk_bittimer--;
       // Verschiebe Daten in modulator_in (Vektor für FIR).
@@ -167,27 +187,21 @@ INTERRUPT_FUNC gmsk_runidle_int(void) {
 	gmsk_bitlen  = gmsk_nextbitlen;
       }
       GMSK_TX_TIMER.rc = (((MASTERCLOCK+1)/2)*GMSK_TXDRESOLUTION+500)/1000;	// Warte 1ms nach Idle
-      INTC_register_interrupt(&gmsk_begin_int, GMSK_TX_TIMER_IRQ, DV_MOD_INTPRIO);
+      INTC_register_interrupt(gmsk_begin_int, GMSK_TX_TIMER_IRQ, DV_MODWRK_INTPRIO);
       gmsk_nextdataptr = NULL;			// Datenzeiger
       gmsk_nextbitlen  = 0;
     }
-  } // fi oversampling
+//  } // fi oversampling
 }
 
 
-
-INTERRUPT_FUNC gmsk_modulator_int(void) {
-  GMSK_TX_TIMER.sr;
-  dac_modulate(modulator_out[gmsk_overcnt]);
-
+INTERRUPT_FUNC gmsk_calcnextbit_int(void) {
+  AVR32_SPI.idr = AVR32_SPI_IER_TXEMPTY_MASK;
+  AVR32_SPI.sr;
   // Setting Timer-Period - modulate to a exact Baudrate
-  GMSK_TX_TIMER.rc = GMSK_MOD_DEFAULT + gmsk_txpll_accu.u16[0];
-  gmsk_txpll_accu.u16[0] = 0;	// Clear Alternate-Bit
-  gmsk_txpll_accu.u32 += GMSK_MOD_PHASE;
-
-  if (++gmsk_overcnt >= GMSK_OVERSAMPLING) {
+//  if (++gmsk_overcnt >= GMSK_OVERSAMPLING) {
     dsp16_t mod_new = dac_zero_val;
-    gmsk_overcnt = 0;
+
     // Daten laden, Pointer, Counter:
     if (gmsk_bitcnt < gmsk_bitlen) {		// Lade neue DAC-Daten
       if ((gmsk_bitcnt&0x1F) == 0) {		// bei jeden 32igsten Bit laden
@@ -210,7 +224,7 @@ INTERRUPT_FUNC gmsk_modulator_int(void) {
 	gmsk_bitlen = 0;
 	gmsk_bittimer = GMSK_POSTAMBLEBITS;
 	gmsk_alertpos = 0;
-	INTC_register_interrupt(&gmsk_runidle_int, GMSK_TX_TIMER_IRQ, DV_MOD_INTPRIO);
+	INTC_register_interrupt(gmsk_runidle_int, AVR32_SPI_IRQ, DV_MODWRK_INTPRIO);
 	mod_new = DAC_MIDDLE;
       } // esle "doch kein nächstes Paket"
       gmsk_nextdataptr = NULL;			// Datenzeiger
@@ -223,14 +237,15 @@ INTERRUPT_FUNC gmsk_modulator_int(void) {
     if ((gmsk_reloadhandler != NULL) && (gmsk_bitcnt==gmsk_alertpos)) {
       gmsk_reloadhandler();
     } // fi fast reload handler
-  } // fi oversampling
+//  } // fi oversampling
 }
 
 
 INTERRUPT_FUNC gmsk_begin_int(void) {		// Starts Transfer after a TX-Delay
   GMSK_TX_TIMER.sr;
   if (gmsk_bittimer==0) {
-    INTC_register_interrupt(&gmsk_modulator_int, GMSK_TX_TIMER_IRQ, DV_MOD_INTPRIO);
+    INTC_register_interrupt(gmsk_modulator_int, GMSK_TX_TIMER_IRQ, DV_MODOUT_INTPRIO);
+    INTC_register_interrupt(gmsk_calcnextbit_int, AVR32_SPI_IRQ, DV_MODWRK_INTPRIO);
     GMSK_TX_TIMER.rc = GMSK_MOD_DEFAULT;	// Periode
     gmsk_txpll_accu.u32 = 0;
   } else {
@@ -241,7 +256,7 @@ INTERRUPT_FUNC gmsk_begin_int(void) {		// Starts Transfer after a TX-Delay
 
 static __inline void gmsk_starttxdelay(void) {
   gmsk_stop_txtimer();
-  INTC_register_interrupt(&gmsk_begin_int, GMSK_TX_TIMER_IRQ, DV_MOD_INTPRIO);
+  INTC_register_interrupt(gmsk_begin_int, GMSK_TX_TIMER_IRQ, DV_MODWRK_INTPRIO);
   GMSK_TX_TIMER.rc  = (((MASTERCLOCK+1)/2)*GMSK_TXDRESOLUTION+500)/1000;	// 1ms
   GMSK_TX_TIMER.ccr = AVR32_TC_SWTRG_MASK | AVR32_TC_CLKEN_MASK;
   gmsk_bittimer     = gmsk_txdelay/GMSK_TXDRESOLUTION;
@@ -272,6 +287,27 @@ typedef enum {
   DEMOD_unlocked, DEMOD_faded, DEMOD_sync, DEMOD_locked
 } tDemodState;
 
+/*
+A_ALIGNED const dsp16_t RXLowPassCoeff[] = {
+  DSP16_Q(0.0198974609375),
+  DSP16_Q(0.025848388671875),
+  DSP16_Q(0),
+  DSP16_Q(-0.043792724609375),
+  DSP16_Q(-0.05859375),
+  DSP16_Q(0),
+  DSP16_Q(0.127838134765625),
+  DSP16_Q(0.261138916015625),
+  DSP16_Q(0.3179931640625),
+  DSP16_Q(0.261138916015625),
+  DSP16_Q(0.127838134765625),
+  DSP16_Q(0),
+  DSP16_Q(-0.05859375),
+  DSP16_Q(-0.043792724609375),
+  DSP16_Q(0),
+  DSP16_Q(0.025848388671875),
+  DSP16_Q(0.0198974609375)
+};
+*/
 
 // Filter-Coeff calculated by Torsten Schultze DG1HT
 A_ALIGNED const dsp16_t RXLowPassCoeff[] = {
@@ -342,7 +378,7 @@ dsp16_t dcd_clockval, dcd_levelval, dcd_value;
 // Max-Werte DCD einführen
 
 #define PLL_SYNC_KORR_FAK	0.1
-#define PLL_LOCKED_KORR_FAK	0.095
+#define PLL_LOCKED_KORR_FAK	0.095	//0.025
 
 #define DC_Level_Fak		0.01	//0.05
 #define Meas_Level_Fak		0.08	//0.2
@@ -355,9 +391,9 @@ dsp16_t dcd_clockval, dcd_levelval, dcd_value;
 #define DCD_CLOCK_BAL		1.0		// Gewicht Nulldurchgangsabweichung
 #define DCD_LEVEL_BAL		0.3		// Gewicht Bitmax-Varianz
 
-#define DCD_UNLOCK_VAL		1950
-#define DCD_FADE_VAL		780
-#define DCD_CAN_LOCK_VAL	50
+#define DCD_UNLOCK_VAL		1950	// 900
+#define DCD_FADE_VAL		780	// 600
+#define DCD_CAN_LOCK_VAL	50	// 300
 
 #define DEMOD_MAX_FADE_BITTIME	(96*50*2)	// 2 Sekunden
 
@@ -477,18 +513,28 @@ static void dcd_init(void) {
  * Soft-Decision-Werte ermitteln (für AMBE Soft-Dec Modus)
  */
 
+/* gmsk_samplestart_int()
+ * Timer-Interrupt, high priority. Starts AD-conversion and update RX-PLL
+ *
+ */
 
-INTERRUPT_FUNC gmsk_demodulator_int(void) {
-  dsp16_t adc_val;
-  GMSK_RX_TIMER.sr;				// Acknowledge IRQ
-  adc_val = HFIN << 4;				// Store last ADC (als 14 bit Wert)
+INTERRUPT_FUNC gmsk_samplestart_int(void) {
   adc_startconversion();			// Start next ADC
-
+  GMSK_RX_TIMER.sr;				// Acknowledge IRQ
   // Update Period-Length (PLL-Value for exact RX-Clock):
   GMSK_RX_TIMER.rc = gmsk_rxpll_clk.u16[0] + gmsk_rxpll_accu.u16[0];
   gmsk_rxpll_accu.u16[0] = 0;	// Clear Alternate-Bit
   gmsk_rxpll_accu.u32 += gmsk_rxpll_clk.u16[1];
+  AVR32_ADC.ier	= HFDATA_INT_MASK;
+}
 
+
+INTERRUPT_FUNC gmsk_getsample_int(void) {
+  dsp16_t adc_val;
+  AVR32_ADC.sr;					// Acknowledge IRQ
+  AVR32_ADC.idr	= HFDATA_INT_MASK;
+  adc_val = HFIN << 4;				// Store last ADC (als 14 bit Wert)
+  adc_startconversion();			// Start next ADC
 #ifdef DEBUG_CLOCK_RECOVER
   dac_modulate(demod_in[demod_bitphasecnt]);
 #endif
@@ -678,7 +724,6 @@ void gmsk_demodulator_start(void) {
   gmsk_stop_rxtimer();
   demod_bitphasecnt = 0;
   gmsk_demod_unlock();
-  INTC_register_interrupt(&gmsk_demodulator_int, GMSK_RX_TIMER_IRQ, DV_DEMOD_INTPRIO);
   GMSK_RX_TIMER.sr;
   GMSK_RX_TIMER.ier = AVR32_TC_CPCS_MASK;
   GMSK_RX_TIMER.rc  = GMSK_RCDEFAULT;	// SPS-Rate: Periode für ADC
@@ -773,11 +818,13 @@ void gmsk_init(void) {
   // *** Timer ***
   GMSK_RX_TIMER.cmr = TIMER_CMR_VALUE;
   GMSK_RX_TIMER.rc  = GMSK_RCDEFAULT;	// SPS-Rate: Periode für ADC
-  INTC_register_interrupt(&gmsk_demodulator_int, GMSK_RX_TIMER_IRQ, DV_DEMOD_INTPRIO);
+  INTC_register_interrupt(gmsk_samplestart_int, GMSK_RX_TIMER_IRQ, DV_DEMODIN_INTPRIO);
+  INTC_register_interrupt(gmsk_getsample_int, GMSK_GETSAMPLE_IRQ, DV_DEMODWRK_INTPRIO);
+
 #if (DVRX_TIMER_CH != DVTX_TIMER_CH)
   GMSK_TX_TIMER.cmr = TIMER_CMR_VALUE;
   GMSK_TX_TIMER.rc  = (((MASTERCLOCK+1)/2)*GMSK_TXDRESOLUTION+500)/1000;	// 1ms
-  INTC_register_interrupt(&gmsk_begin_int, GMSK_TX_TIMER_IRQ, DV_MOD_INTPRIO);
+  INTC_register_interrupt(gmsk_begin_int, GMSK_TX_TIMER_IRQ, DV_MODOUT_INTPRIO);
 #endif
   dac_waitidle();
   dac_modulate(DAC_MIDDLE);
