@@ -496,6 +496,9 @@ void rptr_endtransmit(void) {
  */
 void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
   tds_voicedata *new_data;
+  // Test: uncomment next line to disable buffer-sorting (ignore pkt_nr)
+  // pkt_nr = TxVoice_WrPos;	// *** TEST
+
 #if VoiceTxBufSize != DSTAR_SYNCINTERVAL
   int cycle = pkt_nr%DSTAR_SYNCINTERVAL;	// set frame #0, #21, #42 ...
 #else						// a sync frame!
