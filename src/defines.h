@@ -72,8 +72,8 @@ typedef void (*tfunction)(void);	// void-void Functions generell
 #define PAKETBUFFERSIZE	(512+8)		// Maximum Size per Frame we can receive
 
 // Returncodes (first data in answer)
-#define NAK			15
-#define ACK			6
+#define NAK			0x15
+#define ACK			0x06
 
 #define PKT_PARAM_IDX		4
 
