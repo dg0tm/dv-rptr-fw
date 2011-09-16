@@ -322,6 +322,7 @@ __inline void handle_pc_paket(int len) {
     }
     break;
   case RPTR_SET_CONFIG:
+    pc_fill_answer();
     if (config_setup(rxdatapacket.data+PKT_PARAM_IDX, len-1)) {
       pc_send_byte(ACK);
     } else {
