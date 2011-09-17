@@ -43,7 +43,7 @@
 #define GMSK_DCDSHIFTDEC	6		// 64igstel Mittelwert
 
 
-#define	GMSK_DEFAULT_BW		0x7FF0
+#define	GMSK_DEFAULT_BW		0x3F00		// 100% = 0x4000
 
 // *** Debugging ***
 #ifdef DEBUG

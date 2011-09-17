@@ -115,6 +115,7 @@ A_ALIGNED const dsp16_t GaussCoeffs[GaussCoeffsSize] = {
 
 A_ALIGNED dsp16_t modulator_in[MOD_IN_SIZE];		// Eingangsbuffer für FIR Filter
 A_ALIGNED dsp16_t modulator_out[GMSK_OVERSAMPLING];	// geGaußte DAC Daten
+A_ALIGNED dsp16_t dac_out_buffer[GMSK_OVERSAMPLING];	// keep modulator_out double_puffered
 
 U32 gmsk_txdelay = GMSK_STDTXDELAY;
 U32 gmsk_overcnt, gmsk_tsr, gmsk_bitcnt, gmsk_bittimer;	// Zählervariablen Modulator
@@ -133,7 +134,7 @@ tgmsk_reloadfunc gmsk_reloadhandler;		// Functionvar
 //! @{
 
 static __inline void gmsk_nextdacval(volatile dsp16_t newval) {
-  dsp16_vect_copy(modulator_in, modulator_in+4, MOD_IN_SIZE-4);
+  dsp16_vect_copy(modulator_in, modulator_in+GMSK_OVERSAMPLING, MOD_IN_SIZE-GMSK_OVERSAMPLING);
   modulator_in[MOD_IN_SIZE-4] = newval;
   modulator_in[MOD_IN_SIZE-3] = newval;
   modulator_in[MOD_IN_SIZE-2] = newval;
@@ -152,12 +153,13 @@ INTERRUPT_FUNC gmsk_begin_int(void);	// forward
 
 
 INTERRUPT_FUNC gmsk_modulator_int(void) {
-  dac_modulate(modulator_out[gmsk_overcnt]);
+  dac_modulate(dac_out_buffer[gmsk_overcnt]);
   GMSK_TX_TIMER.sr;
   GMSK_TX_TIMER.rc = GMSK_MOD_DEFAULT + gmsk_txpll_accu.u16[0];
   gmsk_txpll_accu.u16[0] = 0;	// Clear Alternate-Bit
   gmsk_txpll_accu.u32 += GMSK_MOD_PHASE;
   if (++gmsk_overcnt >= GMSK_OVERSAMPLING) {
+    dsp16_vect_copy(dac_out_buffer, modulator_out, GMSK_OVERSAMPLING);
     AVR32_SPI.ier = AVR32_SPI_IER_TXEMPTY_MASK;
     gmsk_overcnt = 0;
   } // fi every 4 times (oversampling)
@@ -520,12 +522,16 @@ static void dcd_init(void) {
 
 INTERRUPT_FUNC gmsk_samplestart_int(void) {
   adc_startconversion();			// Start next ADC
+  if (demod_bitphasecnt==0) {
+    gpio0_set(DEBUG_PIN1);
+  }
   GMSK_RX_TIMER.sr;				// Acknowledge IRQ
   // Update Period-Length (PLL-Value for exact RX-Clock):
   GMSK_RX_TIMER.rc = gmsk_rxpll_clk.u16[0] + gmsk_rxpll_accu.u16[0];
   gmsk_rxpll_accu.u16[0] = 0;	// Clear Alternate-Bit
   gmsk_rxpll_accu.u32 += gmsk_rxpll_clk.u16[1];
   AVR32_ADC.ier	= HFDATA_INT_MASK;
+  gpio0_clr(DEBUG_PIN1);
 }
 
 

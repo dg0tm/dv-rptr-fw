@@ -207,7 +207,7 @@ typedef struct PACKED_DATA {
 
 t_config_0 CONFIG_C0 = {
     0x00,			// flags
-    100 * 256 / V_Ref_5,	// modulation voltage peak-peak ~ 1.00V
+    1000 * 256 / V_Ref,		// modulation voltage peak-peak ~ 1.00V
     GMSK_STDTXDELAY<<8		// little endian!
 };
 
