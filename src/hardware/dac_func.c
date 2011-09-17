@@ -25,7 +25,7 @@
  * Report:
  * 2011-08-30	Remove AD5260 single DAC code (used on DV-Modem)...
  * 2011-09-03	MODFDIS bit @ dac_init()
- *
+ * 2011-09-17	dac_modulate() uses 15bit not 16bit as maximum values
  */
 
 
@@ -107,7 +107,7 @@ __inline void dac_transmit(unsigned short int data) {
 
 
 __inline void dac_modulate(int value) {
-  AVR32_SPI.tdr = dac_select_mask | (__builtin_sats(value, 4, 12)+0x0800);
+  AVR32_SPI.tdr = dac_select_mask | (__builtin_sats(value, 3, 12)+0x0800);
 }
 
 

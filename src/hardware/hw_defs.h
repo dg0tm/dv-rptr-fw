@@ -106,7 +106,8 @@
 				(1<<AVR32_PIN_PA29)
 // define GPIO Outputs
 #define GPIO0_ODER		(1<<LED_GREEN_PIN)|(1<<LED_RED_PIN)|(1<<PTT_OUT_PIN)|	\
-	                        (1<<DACLD_PIN)|(1<<USBVBOF_PIN)
+	                        (1<<DACLD_PIN)|(1<<USBVBOF_PIN)|	\
+	                        (1<<EXP_IO21_PIN)|(1<<EXP_IO23_PIN)
 
 #define GPIO0_OVRINIT		(1<<LED_GREEN_PIN)|(1<<DACLD_PIN)|(1<<PTT_OUT_PIN)
 
@@ -144,11 +145,15 @@
 #define LED_Set(ledpins)	gpio0_clr(ledpins)
 #define LEDs_Off()		(AVR32_GPIO.port[0].ovrs = (1<<LED_RED_PIN)|(1<<LED_GREEN_PIN))
 
-#define V_Ref_5			504	// Voltx100
+#define V_Ref			3075	// Voltx1000
 
 #define enable_ptt()		gpio0_clr(PTT_OUT_PIN)
 #define disable_ptt()		gpio0_set(PTT_OUT_PIN)
 #define is_pttactive()		(!gpio0_readovr(PTT_OUT_PIN))
+
+#define DEBUG_PIN1		EXP_IO21_PIN
+#define DEBUG_PIN2		EXP_IO23_PIN
+
 
 #endif
 
