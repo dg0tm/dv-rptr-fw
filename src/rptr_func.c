@@ -234,14 +234,17 @@ void rptr_break_current(void) {
 void rptr_receivedframe(void) {
   U8 cycle = (RPTR_RxFrameCount-RPTR_RxLastSync) % DSTAR_SYNCINTERVAL;
   U8 index = (RPTR_RxFrameCount+1) % VoiceRxBufSize;	// position of next frame
-  // now setuo gmsk receiver to catch next frame:
+  // now setup gmsk receiver to catch next frame:
   if ((RPTR_RxFrameCount-RPTR_RxLastSync) < RPTR_MAX_PKT_WO_SYNC) {
     gmsk_set_receivebuf(DStar_RxVoice[index].packet, DSTAR_FRAMEBITSIZE);
   } else {				// fi valid data
+    gpio0_set(DEBUG_PIN2);
     RPTR_Flags |= RPTR_RX_LOST;
     RPTR_Flags &= ~RPTR_RECEIVING;
     LED_Clear(LED_GREEN);
   } // esle
+  RPTR_Flags |= RPTR_RX_FRAME;
+  RPTR_RxFrameCount++;					// increase counter
   index = RPTR_RxFrameCount%VoiceRxBufSize;		// index points now to current
   if (cycle == 0) {					// is a frame-sync expected?
     if (rptr_is_syncpaket(&DStar_RxVoice[index])) {
@@ -250,11 +253,6 @@ void rptr_receivedframe(void) {
       DStar_LostSyncCounter++;
     }
   } // fi must be a frame-sync
-#ifdef PLAIN_SLOWDATA
-  dstar_scramble_data(&DStar_RxVoice[index]);		// Unscramble 3byte slow data
-#endif
-  RPTR_Flags |= RPTR_RX_FRAME;
-  RPTR_RxFrameCount++;					// increase counter
 }
 
 
@@ -286,6 +284,7 @@ void rptr_receivedframesync(void) {
     RPTR_RxLastSync   = 0;
     DStar_LostSyncCounter = 0;
     LED_Set(LED_GREEN);
+    gpio0_clr(DEBUG_PIN2);
   }
 }
 
@@ -510,8 +509,8 @@ void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
   if (cycle==0) {				// Sync-Frame needed?
     dstar_insert_sync(new_data);
 #ifdef PLAIN_SLOWDATA
-  } else {
-    dstar_scramble_data(new_data);		// scramble data (was plain)
+//  } else {
+//    dstar_scramble_data(new_data);		// scramble data (was plain)
 #endif
   } // esle
   if (pkt_nr == TxVoice_WrPos) {		// expected paket from PC...

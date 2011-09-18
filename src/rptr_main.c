@@ -45,6 +45,7 @@
  * 2011-09-05 V0.09  rptr_addtxvoice() nummeration logic bugfix
  * 2011-09-06 V0.10  gmsk: Additional Interrupt-Handler keeps critical Timer-based ADC-start, DAC-out
  * 		     with a minimum of jitter in the case of duplex operation
+ * 2011-09-18 V0.12  various tests with demodulator.
  *
  * ToDo:
  * - enable / disable receiver (if disabled keep firmware alive by a idle-counter)
@@ -149,50 +150,6 @@ theadrpcdata	headerdata;
 tvoicepcdata	voicedata;	// Voice+Slowdata from HF
 
 
-
-void init_pcdata(void) {
-  ctrldata.head.id  = FRAMESTARTID;
-  ctrldata.head.len = swap16(sizeof(ctrldata)-5);
-  ctrldata.rxid = 0;
-  headerdata.head.id  = FRAMESTARTID;
-  headerdata.head.len = swap16(sizeof(headerdata)-5);
-  headerdata.head.cmd = RPTR_HEADER;
-  voicedata.head.id   = FRAMESTARTID;
-  voicedata.head.len  = swap16(sizeof(voicedata)-5);
-  voicedata.head.cmd  = RPTR_RXSYNC;
-}
-
-
-__inline void pc_send_byte(U8 data) {
-  answer.head.len = 2;
-  answer.data[PKT_PARAM_IDX] = data;
-}
-
-
-void pc_fill_answer(void) {
-  answer.head.id  = FRAMESTARTID;
-  answer.head.len = 0;
-  answer.head.cmd = 0x80|rxdatapacket.head.cmd;
-}
-
-
-void update_status(void) {
-#ifdef DVRPTR
-  if (gpio0_readpin(EXP_IO21_PIN))
-    status_control &= ~STA_IO21_STATE;
-  else
-    status_control |= STA_IO21_STATE;
-  if (gpio0_readpin(EXP_IO23_PIN))
-    status_control &= ~STA_IO23_STATE;
-  else
-    status_control |= STA_IO23_STATE;
-#endif
-  status_state = 0;
-  if (RPTR_is_set(RPTR_RECEIVING))    status_state |= STA_RECEIVING;
-  if (RPTR_is_set(RPTR_TRANSMITTING)) status_state |= STA_TRANSMITTING;
-}
-
-
 // configuration routines - physical config
 typedef struct PACKED_DATA {
   unsigned char flags;
@@ -210,6 +167,24 @@ t_config_0 CONFIG_C0 = {
     1000 * 256 / V_Ref,		// modulation voltage peak-peak ~ 1.00V
     GMSK_STDTXDELAY<<8		// little endian!
 };
+
+
+
+void update_status(void) {
+#ifdef DVRPTR
+  if (gpio0_readpin(EXP_IO21_PIN))
+    status_control &= ~STA_IO21_STATE;
+  else
+    status_control |= STA_IO21_STATE;
+  if (gpio0_readpin(EXP_IO23_PIN))
+    status_control &= ~STA_IO23_STATE;
+  else
+    status_control |= STA_IO23_STATE;
+#endif
+  status_state = 0;
+  if (RPTR_is_set(RPTR_RECEIVING))    status_state |= STA_RECEIVING;
+  if (RPTR_is_set(RPTR_TRANSMITTING)) status_state |= STA_TRANSMITTING;
+}
 
 
 void cfg_apply(void) {
@@ -266,13 +241,33 @@ bool config_setup(const char *config_data, int len) {
 }
 
 
+
+void init_pcdata(void) {
+  ctrldata.head.id  = FRAMESTARTID;
+  ctrldata.head.len = swap16(sizeof(ctrldata)-5);
+  ctrldata.rxid = 0;
+  headerdata.head.id  = FRAMESTARTID;
+  headerdata.head.len = swap16(sizeof(headerdata)-5);
+  headerdata.head.cmd = RPTR_HEADER;
+  voicedata.head.id   = FRAMESTARTID;
+  voicedata.head.len  = swap16(sizeof(voicedata)-5);
+  voicedata.head.cmd  = RPTR_RXSYNC;
+}
+
+
+__inline void pc_send_byte(U8 data) {
+  answer.head.len = 2;
+  answer.data[PKT_PARAM_IDX] = data;
+}
+
+
+
 // handle_serial_paket()
 // verarbeitet "paket" mit len optionalen Daten (Header NICHT mitgerechnet).
 __inline void handle_pc_paket(int len) {
   answer.head.len = 0;			// no answer.
   switch (rxdatapacket.head.cmd) {	// Kommando-Byte
   case RPTR_GET_STATUS:
-    pc_fill_answer();
     if (len==1) {			// request
       update_status();
       answer.data[PKT_PARAM_IDX+0] = status_control;
@@ -290,19 +285,16 @@ __inline void handle_pc_paket(int len) {
     }
     break;
   case RPTR_GET_VERSION:
-    pc_fill_answer();
     answer.data[PKT_PARAM_IDX+0] = FIRMWAREVERSION & 0xFF;
     answer.data[PKT_PARAM_IDX+1] = FIRMWAREVERSION >> 8;
     memcpy(answer.data+PKT_PARAM_IDX+2, VERSION_IDENT, sizeof(VERSION_IDENT));
     answer.head.len = sizeof(VERSION_IDENT)+3-1;	// cut String-Terminator /0
     break;
   case RPTR_GET_SERIAL:
-    pc_fill_answer();
     memcpy(answer.data+PKT_PARAM_IDX, (void *)SERIALNUMBER_ADDRESS, 4);
     answer.head.len = 5;
     break;
   case RPTR_GET_CONFIG:
-    pc_fill_answer();
     if (len==1) {			// request all config
       char *nextblock = cfg_read_c0(answer.data+PKT_PARAM_IDX);
       //...
@@ -322,7 +314,6 @@ __inline void handle_pc_paket(int len) {
     }
     break;
   case RPTR_SET_CONFIG:
-    pc_fill_answer();
     if (config_setup(rxdatapacket.data+PKT_PARAM_IDX, len-1)) {
       pc_send_byte(ACK);
     } else {
@@ -342,6 +333,9 @@ __inline void handle_pc_paket(int len) {
     // (transmission use last header)
     break;
   case RPTR_DATA:		// transmit data (voice and slowdata or sync)
+#ifdef PLAIN_SLOWDATA		// scramble data (if was plain)
+    dstar_scramble_data((tds_voicedata *)&rxdatapacket.data[PKT_PARAM_IDX+2]);
+#endif
     // keep 2 bytes for future use, keep layout identical to RX
     rptr_addtxvoice((tds_voicedata *)&rxdatapacket.data[PKT_PARAM_IDX+2],
       rxdatapacket.data[PKT_PARAM_IDX+1]);
@@ -350,7 +344,6 @@ __inline void handle_pc_paket(int len) {
     rptr_endtransmit();
     break;
   case RPTR_SET_TESTMDE:
-    pc_fill_answer();
     if (len==2) {
       if (rxdatapacket.data[PKT_PARAM_IDX]&0x01) {
 	if (RPTR_is_set(RPTR_RECEIVING)) {
@@ -367,12 +360,13 @@ __inline void handle_pc_paket(int len) {
     } else pc_send_byte(NAK);
     break;
   default:
-    pc_fill_answer();
     pc_send_byte(NAK);
     break;
   } // hctiws
   if ((answer.head.len > 0)&&(answer.head.len<(PAKETBUFFERSIZE-4))) {
     U32 anslen = answer.head.len+5;
+    answer.head.id  = FRAMESTARTID;
+    answer.head.cmd = 0x80|rxdatapacket.head.cmd;
     answer.head.len = swap16(answer.head.len);
     append_crc_ccitt(answer.data, anslen);
     data_transmit(answer.data, anslen);
@@ -425,7 +419,7 @@ void handle_pcdata(void) {
 
 void handle_hfdata(void) {
   static bool transmission = false;
-  if (RPTR_Flags!=0) {
+  if (RPTR_Flags != 0) {
     if (RPTR_is_set(RPTR_RX_SYNC)) {
       RPTR_clear(RPTR_RX_SYNC);
       if (!transmission) {
@@ -442,6 +436,9 @@ void handle_hfdata(void) {
       RPTR_clear(RPTR_RX_FRAME);
       voicedata.head.cmd = RPTR_DATA;
       voicedata.pktcount = rptr_copycurrentrxvoice(&voicedata.DVdata);
+#ifdef PLAIN_SLOWDATA
+      dstar_scramble_data(&voicedata);		// Unscramble 3byte slow data
+#endif
       append_crc_ccitt((char *)&voicedata, sizeof(voicedata));
       data_transmit((char *)&voicedata, sizeof(voicedata));
     } // fi voice data
@@ -497,7 +494,7 @@ int main(void) {
   rptr_init_hardware();
   usb_init();				// Enable VBUS-Check
 
-  // *** Initialierung der verschiedenen Parameter ***
+  // *** initializing constant parts of I/O structures ***
 
   rptr_init_data();			// Default Header "noCall"
   init_pcdata();			// Initialisation of persitent Pkts (Header, Voice)

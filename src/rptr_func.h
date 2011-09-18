@@ -56,7 +56,7 @@ extern unsigned int RPTR_Flags;
 
 
 // maximum receive packets, if no sync-frame received:
-#define RPTR_MAX_PKT_WO_SYNC	50
+#define RPTR_MAX_PKT_WO_SYNC	64	// norm 50! Test
 
 #define DSTAR_BEFOREFRAMEENDS	16	// 16 bit-time before gmsk-modulator-data runs out
 // attention: this value must be smaller than 32 (last 32bit must be alreay loaded in GMSK fct)
