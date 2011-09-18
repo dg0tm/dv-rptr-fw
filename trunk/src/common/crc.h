@@ -26,6 +26,7 @@
 #ifndef CRC_H_
 #define CRC_H_
 
+#define USECCITTTABLE
 
 void append_crc_ccitt(char *buffer, unsigned int len);
 

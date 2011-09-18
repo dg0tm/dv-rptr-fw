@@ -40,6 +40,7 @@
  * 2011-08-28	Fehlerbehebung Duplex
  * 2011-09-06	Additional Interrupt-Handler keeps critical Timer-based ADC-start, DAC-out
  * 		with a minimum of jitter in the case of duplex operation
+ * 2011-09-18	new gaussian shaping filter (BT=0.5, old: BT=0.3)
  */
 
 
@@ -98,6 +99,8 @@ Union32 gmsk_txpll_accu;
 #define MOD_IN_SIZE		(GaussCoeffsSize+GMSK_OVERSAMPLING-1)
 #define GMSK_POSTAMBLEBITS	MOD_IN_SIZE
 
+/*
+// Gaussian filter for a BT of 0.3, calculated with FilterExpress:
 A_ALIGNED const dsp16_t GaussCoeffs[GaussCoeffsSize] = {
   DSP16_Q(0.000161675648356901),
   DSP16_Q(0.00490155244379313),
@@ -109,6 +112,20 @@ A_ALIGNED const dsp16_t GaussCoeffs[GaussCoeffsSize] = {
   DSP16_Q(0.00490155244379313),
   DSP16_Q(0.000161675648356901)
 };
+*/
+// Gaussian filter for a BT of 0.5, calculated with MATLAB (from G4KLX):
+A_ALIGNED const dsp16_t GaussCoeffs[GaussCoeffsSize] = {
+  DSP16_Q(0.000304557692183),
+  DSP16_Q(0.006860972327255),
+  DSP16_Q(0.063476277434485),
+  DSP16_Q(0.241183125455494),
+  DSP16_Q(0.376350134181166),
+  DSP16_Q(0.241183125455494),
+  DSP16_Q(0.063476277434485),
+  DSP16_Q(0.006860972327255),
+  DSP16_Q(0.000304557692183)
+};
+
 
 
 // *** Transmitter Buffer and Variables ****
@@ -311,6 +328,29 @@ A_ALIGNED const dsp16_t RXLowPassCoeff[] = {
 };
 */
 
+// calculated by Torsten Schultze DG1HT
+A_ALIGNED const dsp16_t RXLowPassCoeff[] = {
+  DSP16_Q(0.019823264989714),
+  DSP16_Q(0.025848388671875),
+  DSP16_Q(0),
+  DSP16_Q(-0.043792724609375),
+  DSP16_Q(-0.05859375),
+  DSP16_Q(0),
+  DSP16_Q(0.127838134765625),
+  DSP16_Q(0.261138916015625),
+  DSP16_Q(0.3179931640625),
+  DSP16_Q(0.261138916015625),
+  DSP16_Q(0.127838134765625),
+  DSP16_Q(0),
+  DSP16_Q(-0.058593752349941),
+  DSP16_Q(-0.041093832349941),
+  DSP16_Q(0),
+  DSP16_Q(0.026812695985862),
+  DSP16_Q(0.018417607438616)
+};
+
+
+/*
 // Filter-Coeff calculated by Torsten Schultze DG1HT
 A_ALIGNED const dsp16_t RXLowPassCoeff[] = {
   DSP16_Q(0.000720827595098),  DSP16_Q(-0.000000000000000),  DSP16_Q(-0.000925046533099),
@@ -331,7 +371,7 @@ A_ALIGNED const dsp16_t RXLowPassCoeff[] = {
   DSP16_Q(0.000000000000000),  DSP16_Q(-0.001468460185275),  DSP16_Q(-0.001626164182341),
   DSP16_Q(-0.000925046533099), DSP16_Q(-0.000000000000000),  DSP16_Q(0.000720827595098)
 };
-
+*/
 
 #define RXFILTCOEFFSIZE		(sizeof(RXLowPassCoeff)/sizeof(dsp16_t))
 #define DEMOD_ADC_SIZE		(RXFILTCOEFFSIZE+GMSK_BITSAMPLING-1)
@@ -456,7 +496,6 @@ static void gmsk_demod_unlock(void) {
 static __inline void gmsk_demod_sync(void) {
   demod_clockrecover = &gmsk_sync_fkt;
   demod_state = DEMOD_sync;
-  ClrDebug1();
 }
 
 static __inline void gmsk_demod_lock(void) {
@@ -469,7 +508,6 @@ static __inline void gmsk_demod_fadeout(void) {
   demod_state = DEMOD_faded;
   demod_fade_counter = DEMOD_MAX_FADE_BITTIME;
   demod_korr = 0;
-  SetDebug1();
 }
 
 
@@ -506,6 +544,7 @@ static void dcd_init(void) {
   dcd_levelval = 0x7fff;
 }
 
+
 /* ToDo Demodulator Int:
  * dcd_level relativ zu Gesamtlevel
  * ISI im Nulldurchgang berücksichtigen für Korrekturwerte
@@ -521,41 +560,121 @@ static void dcd_init(void) {
  */
 
 INTERRUPT_FUNC gmsk_samplestart_int(void) {
+  dsp16_t adc_val;
+  GMSK_RX_TIMER.sr;				// Acknowledge IRQ
+  adc_val = HFIN << 4;				// Store last ADC (as a 14 bit value)
   adc_startconversion();			// Start next ADC
   if (demod_bitphasecnt==0) {
     gpio0_set(DEBUG_PIN1);
   }
-  GMSK_RX_TIMER.sr;				// Acknowledge IRQ
   // Update Period-Length (PLL-Value for exact RX-Clock):
   GMSK_RX_TIMER.rc = gmsk_rxpll_clk.u16[0] + gmsk_rxpll_accu.u16[0];
   gmsk_rxpll_accu.u16[0] = 0;	// Clear Alternate-Bit
   gmsk_rxpll_accu.u32 += gmsk_rxpll_clk.u16[1];
-  AVR32_ADC.ier	= HFDATA_INT_MASK;
-  gpio0_clr(DEBUG_PIN1);
-}
-
-
-INTERRUPT_FUNC gmsk_getsample_int(void) {
-  dsp16_t adc_val;
-  AVR32_ADC.sr;					// Acknowledge IRQ
-  AVR32_ADC.idr	= HFDATA_INT_MASK;
-  adc_val = HFIN << 4;				// Store last ADC (als 14 bit Wert)
-  adc_startconversion();			// Start next ADC
 #ifdef DEBUG_CLOCK_RECOVER
   dac_modulate(demod_in[demod_bitphasecnt]);
 #endif
   // DC-Wert berechnen
   Average16(dc_level, adc_val, DC_Level_Fak);
-  //dc_level = dsp16_op_mul(dc_level, DSP16_Q(1.0-DC_Level_Fak)) + dsp16_op_mul(adc_val, DSP16_Q(DC_Level_Fak));
   // Eingabebuffer für eine Bit-Länge füllen
-  demod_adcin[DEMOD_ADC_SIZE-GMSK_BITSAMPLING+demod_bitphasecnt] = adc_val;
-
+  demod_adcin[(DEMOD_ADC_SIZE-GMSK_BITSAMPLING)+demod_bitphasecnt] = adc_val;
   if (++demod_bitphasecnt >= GMSK_BITSAMPLING ) {
-    int cnt, flanke;
-    dsp16_t bitval;
     demod_bitphasecnt = 0;
-    SetDebug0();
-    // Filter FIR -> Signal
+    AVR32_ADC.ier = HFDATA_INT_MASK;
+  } // fi
+  gpio0_clr(DEBUG_PIN1);
+}
+
+
+
+// simplified, PLL-recover w/o filter
+/*
+INTERRUPT_FUNC gmsk_processbit_int(void) {
+  int cnt, flanke;
+//  dsp16_t bitval;
+  AVR32_ADC.idr	= HFDATA_INT_MASK;
+
+  // Filter FIR -> Signal
+  dsp16_filt_fir(demod_filt+GMSK_BITSAMPLING, demod_adcin, DEMOD_ADC_SIZE, (dsp16_t *)RXLowPassCoeff, RXFILTCOEFFSIZE);
+// no filter  dsp16_vect_copy(demod_filt+GMSK_BITSAMPLING, demod_adcin+DEMOD_ADC_SIZE-GMSK_BITSAMPLING, GMSK_BITSAMPLING);
+
+  // free space for new ADC data:
+  dsp16_vect_copy(demod_adcin, demod_adcin+GMSK_BITSAMPLING, DEMOD_ADC_SIZE-GMSK_BITSAMPLING);
+
+  // DC-Offset vom demod_adcin Vektor abziehen:
+  for (cnt = 0; cnt<GMSK_BITSAMPLING; cnt++) {
+    demod_in[cnt] = demod_adcin[DEMOD_ADC_SIZE-(2*GMSK_BITSAMPLING)+cnt] - dc_level;
+  } // for Zero
+
+  // Flanke erkennen:
+  flanke = -1;
+  for (cnt = 0; cnt < (GMSK_BITSAMPLING-1); cnt++) {
+    if ((demod_in[cnt]&0x8000) != (demod_in[cnt+1]&0x8000)) {
+      flanke = cnt;		// Position der Flanke
+      continue;
+    } // fi Vorzeichenvergleich
+  }
+  demod_korrcnt++;
+  if (flanke > -1) {		// Nulldurchgang erkannt
+    S32 clockcorr = (flanke*GMSK_RCDEFAULT) + gmsk_calc_zerocorr(demod_in[flanke], demod_in[flanke+1]);
+    S32 corr_perbit = clockcorr/demod_korrcnt;		//16sats
+    if (flanke==0) {		// Wir sind in der richtigen Phase
+      Average32(demod_korr, corr_perbit, PLL_LOCKED_KORR_FAK);
+      //gmsk_rxpll_clk.u32 += demod_korr;
+    }
+    GMSK_RX_TIMER.rc += __builtin_sats(corr_perbit, 6, 6);
+    demod_korrcnt  = 0;
+  } // fi
+
+  // Bit in Shiftregister sichern (SHR)
+  demod_shr >>= 1;
+  if (demod_in[3] > 0) {
+    demod_shr |= demod_pos_level;		// pos. Auslenkung -> i.d.R. "0" empfangen
+  } else {	// low_level
+    demod_shr |= demod_neg_level;		// neg. Auslenkung -> i.d.R. "1" empfangen
+  }
+  // Speichern des SHR? Wenn Datenzeiger definert.
+  //if ((demod_state > DEMOD_unlocked) && (demod_rxptr!=NULL)) {
+  demod_rxbitcnt++;
+  if (demod_rxptr != NULL) {
+    if ((demod_rxbitcnt&0x1F) == 0 ) {
+      *demod_rxptr++ = swap32(demod_shr);
+    } else if (demod_rxbitcnt==demod_rxsize) {	// fi Word full
+      *demod_rxptr = swap32(demod_shr >> ((demod_rxsize|0x1F)-demod_rxsize+1));
+    } // fi last Bits
+    if (demod_rxbitcnt >= demod_rxsize) {
+      demod_rxbitcnt = 0;
+      demod_rxptr = NULL;	// vor ReceiveFkt.
+      if (demod_received_fkt != NULL) demod_received_fkt();
+    } // fi fertig
+  } // fi valid ptr to store data
+
+  if (demod_shr == GMSK_SYNCPATTERN) {
+    gmsk_demod_sync();				// bedingungsloses Wechseln nach SYNC
+    demod_rxbitcnt = 0;
+  } else if (demod_shr == GMSK_SYNCSTART) {		// Header Receive Mode...
+    demod_rxbitcnt = 0;
+    if (demod_syncstart_fkt != NULL) demod_syncstart_fkt();
+  } else if (demod_shr == GMSK_SYNCSTOP) {
+    gmsk_demod_unlock();
+    demod_rxbitcnt = 0;
+    if (demod_syncstop_fkt != NULL) demod_syncstop_fkt();
+  } else if ((demod_shr&GMSK_FRAMESYNCMSK) == GMSK_FRAMESYNC) {
+    demod_rxbitcnt = 0;
+    if (demod_state < DEMOD_sync) gmsk_demod_sync();
+    if (demod_framesync_fkt != NULL) demod_framesync_fkt();
+  } // fi
+}
+*/
+
+
+// arround 25% CPU-load with long FIR
+INTERRUPT_FUNC gmsk_processbit_int(void) {
+  int cnt, flanke;
+  dsp16_t bitval;
+  AVR32_ADC.idr	= HFDATA_INT_MASK;
+
+  // Filter FIR -> Signal
     dsp16_filt_fir(demod_filt+GMSK_BITSAMPLING, demod_adcin, DEMOD_ADC_SIZE, (dsp16_t *)RXLowPassCoeff, RXFILTCOEFFSIZE);
     //dsp16_vect_copy(demod_filt+GMSK_BITSAMPLING, demod_adcin+DEMOD_ADC_SIZE-GMSK_BITSAMPLING, GMSK_BITSAMPLING);
     // Verschiebe alte Daten:
@@ -563,7 +682,7 @@ INTERRUPT_FUNC gmsk_getsample_int(void) {
 
     // DC-Offset vom demod_adcin Vektor abziehen:
     for (cnt = 0; cnt<GMSK_BITSAMPLING; cnt++) {
-      demod_in[cnt] = demod_filt[GMSK_BITSAMPLING+cnt]-meas_level;
+      demod_in[cnt] = demod_filt[GMSK_BITSAMPLING+cnt] - meas_level;
     } // for Zero
 
     // Flanke erkennen:
@@ -574,6 +693,7 @@ INTERRUPT_FUNC gmsk_getsample_int(void) {
 	continue;
       } // fi Vorzeichenvergleich
     }
+
     demod_korrcnt++;
     if (flanke > -1) {		// Nulldurchgang erkannt
       S32 clockcorr = (flanke*GMSK_RCDEFAULT) + gmsk_calc_zerocorr(demod_in[flanke], demod_in[flanke+1]);
@@ -601,29 +721,32 @@ INTERRUPT_FUNC gmsk_getsample_int(void) {
 	gmsk_reset_level();
       }
       demod_shr |= demod_neg_level;		// neg. Auslenkung -> i.d.R. "1" empfangen
-      //|= 0x80000000;
     }
+
     // berechne Gleichspannungsoffet fürs nächste Bit:
     meas_level = 	//(demod_state<DEMOD_sync)?dc_level:
       (low_level+((high_level-low_level)>>1));
     gmsk_calc_dcd();			// DCD durchführen
 
+
     // Speichern des SHR? Wenn Datenzeiger definert.
-    if ((demod_state > DEMOD_unlocked) && (demod_rxptr!=NULL)) {
-      demod_rxbitcnt++;
-      if ((demod_rxbitcnt&0x1F)==0 ) {
-        *demod_rxptr++ = swap32(demod_shr);
+    //if ((demod_state > DEMOD_unlocked) && (demod_rxptr!=NULL)) {
+    demod_rxbitcnt++;
+    if (demod_rxptr != NULL) {
+      if ((demod_rxbitcnt&0x1F) == 0 ) {
+	*demod_rxptr++ = swap32(demod_shr);
       } else if (demod_rxbitcnt==demod_rxsize) {	// fi Word full
 	*demod_rxptr = swap32(demod_shr >> ((demod_rxsize|0x1F)-demod_rxsize+1));
       } // fi last Bits
-      if (demod_rxbitcnt==demod_rxsize) {
-	demod_rxptr = NULL;	// vor ReceiveFkt.
-	if (demod_received_fkt != NULL) demod_received_fkt();
+      if (demod_rxbitcnt >= demod_rxsize) {
+        demod_rxbitcnt = 0;
+        demod_rxptr = NULL;	// before received_fkt() called. Ptr is set new in it.
+        if (demod_received_fkt != NULL) demod_received_fkt();
       } // fi fertig
-    } // fi store shift-register
+    } // fi valid ptr to store data
 
     if (demod_shr == GMSK_SYNCPATTERN) {
-      gmsk_demod_sync();	// bedingungsloses Wechseln nach SYNC
+      gmsk_demod_sync();				// change to sync-mode
       demod_rxbitcnt = 0;
     } else if (demod_shr == GMSK_SYNCSTART) {		// Header Receive Mode...
       demod_rxbitcnt = 0;
@@ -637,16 +760,16 @@ INTERRUPT_FUNC gmsk_getsample_int(void) {
       if (demod_state < DEMOD_sync) gmsk_demod_sync();
       if (demod_framesync_fkt != NULL) demod_framesync_fkt();
     } // fi
+
     // Altes Bit aufheben zum Vergleich
     dsp16_vect_copy(demod_filt, demod_filt+GMSK_BITSAMPLING, GMSK_BITSAMPLING);
 
 #ifdef DEMOD_DBG_BITBUFSIZE
     // Für Test Back-Buffer:
-    dsp16_vect_copy(demod_backbuf, demod_backbuf+GMSK_BITSAMPLING, DEMOD_DBG_BITBUFSIZE*4-GMSK_BITSAMPLING);
-    dsp16_vect_copy(demod_backbuf+DEMOD_DBG_BITBUFSIZE*4-GMSK_BITSAMPLING, demod_in, GMSK_BITSAMPLING);
+  dsp16_vect_copy(demod_backbuf, demod_backbuf+GMSK_BITSAMPLING, DEMOD_DBG_BITBUFSIZE*4-GMSK_BITSAMPLING);
+  dsp16_vect_copy(demod_backbuf+DEMOD_DBG_BITBUFSIZE*4-GMSK_BITSAMPLING, demod_in, GMSK_BITSAMPLING);
 #endif
-    ClrDebug0();
-  } // fi für jedes Bit
+
 }
 
 
@@ -756,8 +879,7 @@ void gmsk_set_receivefkt(tgmsk_func fkt_received) {
 }
 
 
-void gmsk_set_receivebuf(unsigned long *rxbuf, int bit_len) {
-  demod_rxbitcnt = 0;
+__inline void gmsk_set_receivebuf(unsigned long *rxbuf, int bit_len) {
   demod_rxptr  = rxbuf;
   demod_rxsize = bit_len;
 }
@@ -825,7 +947,7 @@ void gmsk_init(void) {
   GMSK_RX_TIMER.cmr = TIMER_CMR_VALUE;
   GMSK_RX_TIMER.rc  = GMSK_RCDEFAULT;	// SPS-Rate: Periode für ADC
   INTC_register_interrupt(gmsk_samplestart_int, GMSK_RX_TIMER_IRQ, DV_DEMODIN_INTPRIO);
-  INTC_register_interrupt(gmsk_getsample_int, GMSK_GETSAMPLE_IRQ, DV_DEMODWRK_INTPRIO);
+  INTC_register_interrupt(gmsk_processbit_int, GMSK_GETSAMPLE_IRQ, DV_DEMODWRK_INTPRIO);
 
 #if (DVRX_TIMER_CH != DVTX_TIMER_CH)
   GMSK_TX_TIMER.cmr = TIMER_CMR_VALUE;
