@@ -40,7 +40,9 @@
  * 2011-08-28	Fehlerbehebung Duplex
  * 2011-09-06	Additional Interrupt-Handler keeps critical Timer-based ADC-start, DAC-out
  * 		with a minimum of jitter in the case of duplex operation
- * 2011-09-18	new gaussian shaping filter (BT=0.5, old: BT=0.3)
+ * 2011-09-18	new gaussian shaping filter (BT=0.5) from G4KLX
+ * 2011-09-19	modified shaping function (180° phase shifted)
+ * 		replace dsp16_vect_copy() by dsp16_vect_move() if mem is overlapped
  */
 
 
@@ -54,6 +56,12 @@
 
 #include <intc.h>
 #include <dsp.h>
+
+
+// dsp16_vect_copy() [=memcpy()] can't be used for overlapping vectors! Under some
+// conditions, *vect2 is overwritten!
+#define dsp16_vect_move(v1, v2, size) memmove((v1), (v2), (size)*sizeof(dsp16_t))
+
 
 
 #define GMSK_RX_TIMER		AVR32_TC.channel[DVRX_TIMER_CH]
@@ -96,8 +104,9 @@ Union32 gmsk_txpll_accu;
 
 // *** Transmitter / Receiver Gauss-FIR Filter and Sample-Buffer ***
 #define GaussCoeffsSize		9
-#define MOD_IN_SIZE		(GaussCoeffsSize+GMSK_OVERSAMPLING-1)
-#define GMSK_POSTAMBLEBITS	MOD_IN_SIZE
+#define MOD_IN_SIZE		(GaussCoeffsSize+GMSK_OVERSAMPLING+1)
+#define MOD_IN_FSIZE		(GaussCoeffsSize+GMSK_OVERSAMPLING-1)
+#define GMSK_POSTAMBLEBITS	(MOD_IN_FSIZE)
 
 /*
 // Gaussian filter for a BT of 0.3, calculated with FilterExpress:
@@ -151,11 +160,11 @@ tgmsk_reloadfunc gmsk_reloadhandler;		// Functionvar
 //! @{
 
 static __inline void gmsk_nextdacval(volatile dsp16_t newval) {
-  dsp16_vect_copy(modulator_in, modulator_in+GMSK_OVERSAMPLING, MOD_IN_SIZE-GMSK_OVERSAMPLING);
-  modulator_in[MOD_IN_SIZE-4] = newval;
-  modulator_in[MOD_IN_SIZE-3] = newval;
-  modulator_in[MOD_IN_SIZE-2] = newval;
-  modulator_in[MOD_IN_SIZE-1] = newval;
+  dsp16_t *newvals = &modulator_in[MOD_IN_SIZE-GMSK_OVERSAMPLING];
+  dsp16_vect_move(modulator_in, &modulator_in[GMSK_OVERSAMPLING], MOD_IN_SIZE-GMSK_OVERSAMPLING);
+  while (newvals < &modulator_in[MOD_IN_SIZE]) {
+    *newvals++ = newval;
+  } // ehliw
 }
 
 
@@ -197,7 +206,7 @@ INTERRUPT_FUNC gmsk_runidle_int(void) {
       // Verschiebe Daten in modulator_in (Vektor für FIR).
       gmsk_nextdacval(DAC_MIDDLE);
       // Gauss-Filter:
-      dsp16_filt_fir(modulator_out, modulator_in, MOD_IN_SIZE, (dsp16_t *)GaussCoeffs, GaussCoeffsSize);
+      dsp16_filt_fir(modulator_out, modulator_in, MOD_IN_FSIZE, (dsp16_t *)GaussCoeffs, GaussCoeffsSize);
     } else {
       if (gmsk_nextbitlen==0) {			// Kein neues Paket
         gmsk_stop_txtimer();
@@ -251,7 +260,7 @@ INTERRUPT_FUNC gmsk_calcnextbit_int(void) {
     } // fi alle Bits raus
     gmsk_nextdacval(mod_new);	// Verschiebe Daten in modulator_in (Vektor für FIR).
     // Gauss-Filter:
-    dsp16_filt_fir(modulator_out, modulator_in, MOD_IN_SIZE, (dsp16_t *)GaussCoeffs, GaussCoeffsSize);
+    dsp16_filt_fir(modulator_out, modulator_in, MOD_IN_FSIZE, (dsp16_t *)GaussCoeffs, GaussCoeffsSize);
     // Fast-Reload
     if ((gmsk_reloadhandler != NULL) && (gmsk_bitcnt==gmsk_alertpos)) {
       gmsk_reloadhandler();
@@ -596,10 +605,10 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
 
   // Filter FIR -> Signal
   dsp16_filt_fir(demod_filt+GMSK_BITSAMPLING, demod_adcin, DEMOD_ADC_SIZE, (dsp16_t *)RXLowPassCoeff, RXFILTCOEFFSIZE);
-// no filter  dsp16_vect_copy(demod_filt+GMSK_BITSAMPLING, demod_adcin+DEMOD_ADC_SIZE-GMSK_BITSAMPLING, GMSK_BITSAMPLING);
+// no filter  dsp16_vect_copy(demod_filt[GMSK_BITSAMPLING], &demod_adcin[DEMOD_ADC_SIZE-GMSK_BITSAMPLING], GMSK_BITSAMPLING);
 
   // free space for new ADC data:
-  dsp16_vect_copy(demod_adcin, demod_adcin+GMSK_BITSAMPLING, DEMOD_ADC_SIZE-GMSK_BITSAMPLING);
+  dsp16_vect_move(demod_adcin, &demod_adcin[GMSK_BITSAMPLING], DEMOD_ADC_SIZE-GMSK_BITSAMPLING);
 
   // DC-Offset vom demod_adcin Vektor abziehen:
   for (cnt = 0; cnt<GMSK_BITSAMPLING; cnt++) {
@@ -675,10 +684,10 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
   AVR32_ADC.idr	= HFDATA_INT_MASK;
 
   // Filter FIR -> Signal
-    dsp16_filt_fir(demod_filt+GMSK_BITSAMPLING, demod_adcin, DEMOD_ADC_SIZE, (dsp16_t *)RXLowPassCoeff, RXFILTCOEFFSIZE);
-    //dsp16_vect_copy(demod_filt+GMSK_BITSAMPLING, demod_adcin+DEMOD_ADC_SIZE-GMSK_BITSAMPLING, GMSK_BITSAMPLING);
+    dsp16_filt_fir(&demod_filt[GMSK_BITSAMPLING], demod_adcin, DEMOD_ADC_SIZE, (dsp16_t *)RXLowPassCoeff, RXFILTCOEFFSIZE);
+    //dsp16_vect_copy(&demod_filt[GMSK_BITSAMPLING], &demod_adcin[DEMOD_ADC_SIZE-GMSK_BITSAMPLING], GMSK_BITSAMPLING);
     // Verschiebe alte Daten:
-    dsp16_vect_copy(demod_adcin, demod_adcin+GMSK_BITSAMPLING, DEMOD_ADC_SIZE-GMSK_BITSAMPLING);
+    dsp16_vect_move(demod_adcin, &demod_adcin[GMSK_BITSAMPLING], DEMOD_ADC_SIZE-GMSK_BITSAMPLING);
 
     // DC-Offset vom demod_adcin Vektor abziehen:
     for (cnt = 0; cnt<GMSK_BITSAMPLING; cnt++) {
@@ -762,12 +771,12 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
     } // fi
 
     // Altes Bit aufheben zum Vergleich
-    dsp16_vect_copy(demod_filt, demod_filt+GMSK_BITSAMPLING, GMSK_BITSAMPLING);
+    dsp16_vect_move(demod_filt, &demod_filt[GMSK_BITSAMPLING], GMSK_BITSAMPLING);
 
 #ifdef DEMOD_DBG_BITBUFSIZE
     // Für Test Back-Buffer:
-  dsp16_vect_copy(demod_backbuf, demod_backbuf+GMSK_BITSAMPLING, DEMOD_DBG_BITBUFSIZE*4-GMSK_BITSAMPLING);
-  dsp16_vect_copy(demod_backbuf+DEMOD_DBG_BITBUFSIZE*4-GMSK_BITSAMPLING, demod_in, GMSK_BITSAMPLING);
+  dsp16_vect_move(demod_backbuf, &demod_backbuf[GMSK_BITSAMPLING], DEMOD_DBG_BITBUFSIZE*4-GMSK_BITSAMPLING);
+  dsp16_vect_copy(&demod_backbuf[DEMOD_DBG_BITBUFSIZE*4-GMSK_BITSAMPLING], demod_in, GMSK_BITSAMPLING);
 #endif
 
 }
