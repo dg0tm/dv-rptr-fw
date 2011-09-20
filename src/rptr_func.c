@@ -238,7 +238,7 @@ void rptr_receivedframe(void) {
   if ((RPTR_RxFrameCount-RPTR_RxLastSync) < RPTR_MAX_PKT_WO_SYNC) {
     gmsk_set_receivebuf(DStar_RxVoice[index].packet, DSTAR_FRAMEBITSIZE);
   } else {				// fi valid data
-    gpio0_set(DEBUG_PIN2);
+    //gpio0_set(DEBUG_PIN2);
     RPTR_Flags |= RPTR_RX_LOST;
     RPTR_Flags &= ~RPTR_RECEIVING;
     LED_Clear(LED_GREEN);
@@ -284,7 +284,7 @@ void rptr_receivedframesync(void) {
     RPTR_RxLastSync   = 0;
     DStar_LostSyncCounter = 0;
     LED_Set(LED_GREEN);
-    gpio0_clr(DEBUG_PIN2);
+    //gpio0_clr(DEBUG_PIN2);
   }
 }
 
