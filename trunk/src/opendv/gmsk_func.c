@@ -44,6 +44,7 @@
  * 2011-09-19	modified shaping function (180° phase shifted)
  * 		replace dsp16_vect_copy() by dsp16_vect_move() if mem is overlapped
  * 2011-09-20	remove possible raise conditions on adc-buffer, new demodulator code
+ * 		cleeanup code (remove old demod function)
  */
 
 
@@ -90,13 +91,15 @@
 #define SIGNAL_MIN_AMPLITUDE	60
 #define	SIGNAL_MAX_AMPLITUDE	450
 
-#define GMSK_SYNCPATTERN	0x55555555
 
-#define GMSK_SYNC_MASK		0xFFFFFF00	// 24 bits
+#define GMSK_PATTERN_MASK	0xFFFFFF00	// 24 bits
+#define GMSK_SYNCPATTERN	0x55555500
 #define GMSK_SYNCSTART		0x0A6EAA00
 #define GMSK_SYNCSTOP		0xF590AA00	// inverted START Pattern
 #define GMSK_FRAMESYNC		0x162D5500	// all >> direction
-#define GMSK_FRAMESYNCMSK	0xFFFFFF00	// 24 bits
+
+//#define GMSK_SYNC_MASK	0xFFFFFF00	// 24 bits
+//#define GMSK_FRAMESYNCMSK	0xFFFFFF00	// 24 bits
 
 
 
@@ -370,7 +373,7 @@ A_ALIGNED const dsp16_t RXLowPassCoeff[] = {
 #define RXFILTCOEFFSIZE		(sizeof(RXLowPassCoeff)/sizeof(dsp16_t))
 #define DEMOD_ADC_SIZE		(RXFILTCOEFFSIZE+GMSK_BITSAMPLING-1)
 
-#define DEMOD_FILT_SIZE		(GMSK_BITSAMPLING+1)
+#define DEMOD_FILT_SIZE		(GMSK_BITSAMPLING+2)	// 3rd pos is aliged too
 #define DEMOD_BITMAX_POS	(DEMOD_FILT_SIZE-1)	// last sample
 #define DEMOD_ZEROCR_POS	(DEMOD_BITMAX_POS - (GMSK_BITSAMPLING/2))
 
@@ -434,12 +437,8 @@ S16	gmsk_phase_corr;	// use this to do a single phase corr.
 
 int	demod_korrcnt;		// counter of bits, since last call of clock_recover()
 dsp32_t demod_lastkorr;		// stored correction after call of clock_recover()
-dsp32_t demod_korr;		// use this th have a filtered value of clock drift
-
-//int	demod_fade_counter;
-//dsp16_t dc_level, high_level, low_level, meas_level;
-//dsp16_t dcd_clockval, dcd_levelval, dcd_value;
-
+S32	demod_korr;		// use this th have a filtered value of clock drift
+S32	demod_drift;		// avaraged differences between 2 corr values
 
 
 // Demodulator Int simple version
@@ -447,35 +446,7 @@ dsp32_t demod_korr;		// use this th have a filtered value of clock drift
 #define ADC_Middle_Voltage	(510<<4)
 
 // ToDo:
-// Average-Werte optimieren
-// Max-Werte DCD einführen
-
-//define GMSK_PLL_STEP		(GMSK_PLLDEFAULT/256)
-#define DEMOD_KORR_SHIFTR	0
-#define	DEMOD_KORR_MAXBITS	5
-
-#define PLL_SYNC_KORR_FAK	0.02	//0.1
-/*
-#define PLL_LOCKED_KORR_FAK	0.095	//0.025
-
-#define DC_Level_Fak		0.01	//0.05
-#define Meas_Level_Fak		0.08	//0.2
-
-#define DC_InvalBitsMask	0x7FFF8000	// MSB is zero ever (shifted previous)
-
-#define DCD_CLOCK_FLT		0.02
-#define DCD_LEVEL_FLT		0.01
-
-#define DCD_CLOCK_BAL		1.0		// Gewicht Nulldurchgangsabweichung
-#define DCD_LEVEL_BAL		0.3		// Gewicht Bitmax-Varianz
-
-#define DCD_UNLOCK_VAL		1950	// 900
-#define DCD_FADE_VAL		780	// 600
-#define DCD_CAN_LOCK_VAL	50	// 300
-
-#define DEMOD_MAX_FADE_BITTIME	(96*50*2)	// 2 Sekunden
-#define gmsk_reset_level()	{high_level=dc_level; low_level=dc_level;}
-*/
+// -optimize average values
 
 
 #define Average16(var_x, new_x, FAK)	\
@@ -504,50 +475,56 @@ dsp32_t demod_korr;		// use this th have a filtered value of clock drift
  *
  */
 
+
+#define DEMOD_THERSHOLD_PLL	(GMSK_RCDEFAULT<<14)
+#define PLL_LOCK_KORR_FAK	0.005
+
+static void gmsk_locked_fkt(S32 correction, int bits_since_lastcorr) {
+  S32 clock_difference = ((correction-demod_lastkorr)<<16) / bits_since_lastcorr;
+  Average32(demod_korr,  correction<<16, PLL_LOCK_KORR_FAK);
+  Average32(demod_drift, clock_difference, PLL_LOCK_KORR_FAK);
+  if (abs(demod_korr) > DEMOD_THERSHOLD_PLL) {
+    gmsk_phase_corr = __builtin_sats(demod_korr, 16, 6);
+    //gmsk_rxpll_clk.u32 += __builtin_sats(demod_drift, 0, 17);
+    demod_korr = 0;
+  } // fi correct clock
+}
+
+#define PLL_SYNC_KORR_FAK	0.02
+#define DEMOD_THRESHOLD_KORR	(GMSK_RCDEFAULT<<14)
+#define DEMOD_THRESHOLD_DRIFT	(GMSK_RCDEFAULT<<8)
+
+static void gmsk_sync_fkt(S32 correction, int bits_since_lastcorr) {
+  S32 clock_difference = ((correction-demod_lastkorr)<<16) / bits_since_lastcorr;
+  Average32(demod_korr,  correction<<16, PLL_SYNC_KORR_FAK);
+  Average32(demod_drift, clock_difference, PLL_SYNC_KORR_FAK);
+  gmsk_phase_corr = __builtin_sats(correction, 1, 3);
+  // change state to sync if we are in phase:
+  /*
+  if ( (demod_korr < DEMOD_THRESHOLD_KORR) && (demod_drift < DEMOD_THRESHOLD_DRIFT) ) {
+    demod_clockrecover = &gmsk_locked_fkt;
+    demod_state = DEMOD_locked;
+  }
+  */
+//  dac_modulate(demod_korr/4);
+}
+
+
 // PLL-Korrektur-Funktion (3 Versionen):
 // Bekommt Wert, der der Abweichung in Timer-Schritten entspricht
 // Funktion wird bei jeder Flanke aufgerufen und berechnet einen Wert für die DCD.
 static void gmsk_unlocked_fkt(S32 correction, int bits_since_lastcorr) {
-  demod_korr = 0;
-  // Schnell hin zum NDG
-  gmsk_phase_corr = __builtin_sats(correction, 2, 9);		//3-8
-}
-
-static void gmsk_sync_fkt(S32 correction, int bits_since_lastcorr) {
-  S32 clock_difference = ((correction-demod_lastkorr)<<16) / bits_since_lastcorr;
-  Average32(demod_korr, correction<<16, PLL_SYNC_KORR_FAK);
-//  dac_modulate(demod_korr/4);
-  /*
-    // adjust pll clock, if correction needed
-    if (demod_state == DEMOD_locked) {
-      gmsk_rxpll_clk.u32 += __builtin_sats(demod_korr, DEMOD_KORR_SHIFTR, DEMOD_KORR_MAXBITS);
-    }
-  */
-
-//  if (abs(correction) < (2*GMSK_RCDEFAULT)) {	// Wir sind in der richtigen Phase
-//    gmsk_rxpll_clk.u32 += demod_korr;
-//  }
-  gmsk_phase_corr = __builtin_sats(correction, 0, 5);		//4-7
+  demod_korr  = correction<<16;
+  demod_drift = ((correction-demod_lastkorr)<<16) / bits_since_lastcorr;
+  // Schnell hin zum NDG / jitter fast to catch ZC
+  gmsk_phase_corr = __builtin_sats(correction, 0, 9);
 }
 
 
-/*
-static void gmsk_locked_fkt(S32 correction, int bits_since_lastcorr) {
-  if (abs(correction) < (GMSK_RCDEFAULT/2)) {	// Wir sind in der richtigen Phase
-    Average32(demod_korr, correction/bits_since_lastcorr, PLL_LOCKED_KORR_FAK);
-    // Berechnung ist falsch - besser:
-    // Veränderung gegenüber Lastcorr
-    // correction-last_corr / bitlen
-    // das ganze dann Average...
-//    gmsk_pllclk.u32 += demod_korr;
-  }
-  GMSK_RX_TIMER.rc += __builtin_sats(correction, 6, 6);
-}
 
 static void gmsk_faded_fkt(S32 correction, int bits_since_lastcorr) {
 }
 
-*/
 
 
 static void gmsk_demod_unlock(void) {
@@ -555,8 +532,6 @@ static void gmsk_demod_unlock(void) {
   demod_state = DEMOD_unlocked;
   gmsk_rxpll_clk.u32  = GMSK_PLLDEFAULT;	// Set PLL-Clock to default
   gmsk_rxpll_accu.u32 = 0;
-//  gmsk_reset_level();
-//  demod_korr = 0;
 }
 
 
@@ -565,54 +540,6 @@ static __inline void gmsk_demod_sync(void) {
   gmsk_rxpll_clk.u32 = GMSK_PLLDEFAULT;
   demod_state = DEMOD_sync;
 }
-
-/*
-static __inline void gmsk_demod_lock(void) {
-  demod_clockrecover = &gmsk_locked_fkt;
-  demod_state = DEMOD_locked;
-}
-
-static __inline void gmsk_demod_fadeout(void) {
-  demod_clockrecover = &gmsk_faded_fkt;
-  demod_state = DEMOD_faded;
-  demod_fade_counter = DEMOD_MAX_FADE_BITTIME;
-  demod_korr = 0;
-}
-
-
-static __inline void gmsk_calc_dcd(void) {
-  dcd_value = dsp16_op_mul(dcd_clockval, DSP16_Q(DCD_CLOCK_BAL)) + \
-              dsp16_op_mul(dcd_levelval, DSP16_Q(DCD_LEVEL_BAL));
-  // dcd_level ist noch Amplitudenabhängig -> Verhältniss zw. Level und Ampl.
-  switch (demod_state) {
-  case DEMOD_unlocked:		// Tue nix: SYNC-Pattern oder FRAME-Sync nötig.
-    break;
-  case DEMOD_faded:
-    // Warte auf ein Frame-Sync oder Sync-Pattern um nach SYNC zu wechseln
-    if (demod_fade_counter > 0)
-      demod_fade_counter--;
-    else
-      gmsk_demod_unlock();
-    break;
-  case DEMOD_sync:
-    if (dcd_value < DCD_CAN_LOCK_VAL)
-      gmsk_demod_lock();
-    else if (dcd_value > DCD_UNLOCK_VAL)
-      gmsk_demod_unlock();
-    break;
-  case DEMOD_locked:
-    if (dcd_value > DCD_FADE_VAL)
-      gmsk_demod_sync(); //fadeout();
-    break;
-  } // hctiws
-}
-
-static void dcd_init(void) {
-  dcd_clockval = 0x7fff;
-  dcd_levelval = 0x7fff;
-}
-
-*/
 
 
 /* ToDo Demodulator Int:
@@ -624,12 +551,11 @@ static void dcd_init(void) {
  * Soft-Decision-Werte ermitteln (für AMBE Soft-Dec Modus)
  */
 
+
 /* gmsk_samplestart_int()
  * Timer-Interrupt, high priority. Starts AD-conversion and update RX-PLL
- *
+ * keep it as short as possible.
  */
-
-
 INTERRUPT_FUNC gmsk_samplestart_int(void) {
   dsp16_t adc_val;
   GMSK_RX_TIMER.sr;				// Acknowledge IRQ
@@ -663,11 +589,12 @@ INTERRUPT_FUNC gmsk_samplestart_int(void) {
 // simplified, PLL-recover w/o filter
 
 INTERRUPT_FUNC gmsk_processbit_int(void) {
+  U32 pattern;
   // disable interrupt handling (it is enabled by timer interrupt if a bit-sampling finished)
   AVR32_ADC.idr	= HFDATA_INT_MASK;
 
   // Filter FIR on demod_adcin -> Signal to demod_filt (first sample is from previous bit)
-  demod_filter_to(&demod_filt[1]);
+  demod_filter_to(&demod_filt[2]);
 
   // free space for new ADC data:
   dsp16_vect_move(demod_adcin, &demod_adcin[GMSK_BITSAMPLING], DEMOD_ADC_SIZE-GMSK_BITSAMPLING);
@@ -686,13 +613,14 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
   // if true a edge must be between these bits
   demod_korrcnt++;
   if ( ((demod_shr&0xC0000000)==0x80000000) || ((demod_shr&0xC0000000)==0x40000000) ) {
-    int cnt, flanke = 0;
-    if ((demod_shr&0xC0000000)==0x40000000) gpio0_set(DEBUG_PIN2);
     S32 clockcorr;
+    int cnt, flanke = 0;
+    //if ((demod_shr&0xC0000000)==0x40000000)
+    gpio0_set(DEBUG_PIN2);
     // detect phase of zero-crossings (ZC)
-    for (cnt = 1; cnt < DEMOD_FILT_SIZE; cnt++) {
+    for (cnt = DEMOD_ZEROCR_POS; cnt < DEMOD_FILT_SIZE; cnt++) {
       if ((demod_filt[cnt-1]&0x8000) != (demod_filt[cnt]&0x8000)) {
-	flanke = cnt;		// position of an edge found
+	flanke = cnt-DEMOD_ZEROCR_POS-1;		// position of an edge found
 	continue;
       } // fi sign-compare
     } // rof
@@ -706,7 +634,8 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
     gpio0_clr(DEBUG_PIN2);
   } // fi bit changed
 
-  demod_filt[0] = demod_filt[DEMOD_FILT_SIZE-1];	// keep last sample
+  demod_filt[0] = demod_filt[DEMOD_FILT_SIZE-2];	// keep last samples
+  demod_filt[1] = demod_filt[DEMOD_FILT_SIZE-1];
 
   // saving of SHR if a pointer define:
   demod_rxbitcnt++;
@@ -723,133 +652,35 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
     } // fi fertig
   } // fi valid ptr to store data
 
-  if (demod_shr == GMSK_SYNCPATTERN) {
+  pattern = demod_shr&GMSK_PATTERN_MASK;
+  switch (pattern) {
+  case GMSK_SYNCPATTERN:
     gmsk_demod_sync();				// bedingungsloses Wechseln nach SYNC
     demod_rxbitcnt = 0;
-  } else if ((demod_shr&GMSK_SYNC_MASK) == GMSK_SYNCSTART) {	// Header Receive Mode...
+    break;
+  case GMSK_SYNCSTART:
     demod_rxbitcnt = 0;
     if (demod_syncstart_fkt != NULL) demod_syncstart_fkt();
-  } else if ((demod_shr&GMSK_SYNC_MASK) == GMSK_SYNCSTOP) {
+    break;
+  case GMSK_SYNCSTOP:
     gmsk_demod_unlock();
     demod_rxbitcnt = 0;
     if (demod_syncstop_fkt != NULL) demod_syncstop_fkt();
-  } else if ((demod_shr&GMSK_FRAMESYNCMSK) == GMSK_FRAMESYNC) {
+    break;
+  case GMSK_FRAMESYNC:
     demod_rxbitcnt = 0;
     if (demod_state < DEMOD_sync) gmsk_demod_sync();
     if (demod_framesync_fkt != NULL) demod_framesync_fkt();
-  } // fi
-}
-
-
-/*
-// arround 25% CPU-load with long FIR
-INTERRUPT_FUNC gmsk_processbit_int(void) {
-  int cnt, flanke;
-  dsp16_t bitval;
-  AVR32_ADC.idr	= HFDATA_INT_MASK;
-
-  // DC-Wert berechnen
-//  Average16(dc_level, adc_val, DC_Level_Fak);
-
-
-  // Filter FIR -> Signal
-    dsp16_filt_fir(&demod_filt[GMSK_BITSAMPLING], demod_adcin, DEMOD_ADC_SIZE, (dsp16_t *)RXLowPassCoeff, RXFILTCOEFFSIZE);
-    //dsp16_vect_copy(&demod_filt[GMSK_BITSAMPLING], &demod_adcin[DEMOD_ADC_SIZE-GMSK_BITSAMPLING], GMSK_BITSAMPLING);
-    // Verschiebe alte Daten:
-    dsp16_vect_move(demod_adcin, &demod_adcin[GMSK_BITSAMPLING], DEMOD_ADC_SIZE-GMSK_BITSAMPLING);
-
-    // DC-Offset vom demod_adcin Vektor abziehen:
-    for (cnt = 0; cnt<GMSK_BITSAMPLING; cnt++) {
-      demod_in[cnt] = demod_filt[GMSK_BITSAMPLING+cnt] - meas_level;
-    } // for Zero
-
-    // Flanke erkennen:
-    flanke = -1;
-    for (cnt = 0; cnt < (GMSK_BITSAMPLING-1); cnt++) {
-      if ((demod_in[cnt]&0x8000) != (demod_in[cnt+1]&0x8000)) {
-	flanke = cnt;		// Position der Flanke
-	continue;
-      } // fi Vorzeichenvergleich
-    }
-
-    demod_korrcnt++;
-    if (flanke > -1) {		// Nulldurchgang erkannt
-      S32 clockcorr = (flanke*GMSK_RCDEFAULT) + gmsk_calc_zerocorr(demod_in[flanke], demod_in[flanke+1]);
-      S32 corr_perbit = clockcorr/demod_korrcnt;		//16sats
-      Average16(dcd_clockval, __builtin_sats(abs(corr_perbit), 0, 10), DCD_CLOCK_FLT);
-      demod_clockrecover(clockcorr, demod_korrcnt);
-      demod_lastkorr = clockcorr;
-      demod_korrcnt  = 0;
-    } // fi
-
-    bitval = demod_filt[GMSK_BITSAMPLING+3];	// Bit-Wert nach Nulldurchg. mit DC
-    // Bit in Shiftregister sichern (SHR)
-    demod_shr >>= 1;
-    if (demod_in[3] > 0) {
-      Average16(dcd_levelval, abs(high_level-bitval), DCD_LEVEL_FLT);
-      if (demod_state != DEMOD_faded) Average16(high_level, bitval, Meas_Level_Fak);
-      if ((demod_shr&DC_InvalBitsMask)==DC_InvalBitsMask) {
-	gmsk_reset_level();
-      }
-      demod_shr |= demod_pos_level;		// pos. Auslenkung -> i.d.R. "0" empfangen
-    } else {	// low_level
-      Average16(dcd_levelval, abs(low_level-bitval), DCD_LEVEL_FLT);
-      if (demod_state != DEMOD_faded) Average16(low_level, bitval, Meas_Level_Fak);
-      if ((demod_shr&DC_InvalBitsMask)==0) {
-	gmsk_reset_level();
-      }
-      demod_shr |= demod_neg_level;		// neg. Auslenkung -> i.d.R. "1" empfangen
-    }
-
-    // berechne Gleichspannungsoffet fürs nächste Bit:
-    meas_level = 	//(demod_state<DEMOD_sync)?dc_level:
-      (low_level+((high_level-low_level)>>1));
-    gmsk_calc_dcd();			// DCD durchführen
-
-
-    // Speichern des SHR? Wenn Datenzeiger definert.
-    //if ((demod_state > DEMOD_unlocked) && (demod_rxptr!=NULL)) {
-    demod_rxbitcnt++;
-    if (demod_rxptr != NULL) {
-      if ((demod_rxbitcnt&0x1F) == 0 ) {
-	*demod_rxptr++ = swap32(demod_shr);
-      } else if (demod_rxbitcnt==demod_rxsize) {	// fi Word full
-	*demod_rxptr = swap32(demod_shr >> ((demod_rxsize|0x1F)-demod_rxsize+1));
-      } // fi last Bits
-      if (demod_rxbitcnt >= demod_rxsize) {
-        demod_rxbitcnt = 0;
-        demod_rxptr = NULL;	// before received_fkt() called. Ptr is set new in it.
-        if (demod_received_fkt != NULL) demod_received_fkt();
-      } // fi fertig
-    } // fi valid ptr to store data
-
-    if (demod_shr == GMSK_SYNCPATTERN) {
-      gmsk_demod_sync();				// change to sync-mode
-      demod_rxbitcnt = 0;
-    } else if (demod_shr == GMSK_SYNCSTART) {		// Header Receive Mode...
-      demod_rxbitcnt = 0;
-      if (demod_syncstart_fkt != NULL) demod_syncstart_fkt();
-    } else if (demod_shr == GMSK_SYNCSTOP) {
-      gmsk_demod_unlock();
-      demod_rxbitcnt = 0;
-      if (demod_syncstop_fkt != NULL) demod_syncstop_fkt();
-    } else if ((demod_shr&GMSK_FRAMESYNCMSK) == GMSK_FRAMESYNC) {
-      demod_rxbitcnt = 0;
-      if (demod_state < DEMOD_sync) gmsk_demod_sync();
-      if (demod_framesync_fkt != NULL) demod_framesync_fkt();
-    } // fi
-
-    // Altes Bit aufheben zum Vergleich
-    dsp16_vect_move(demod_filt, &demod_filt[GMSK_BITSAMPLING], GMSK_BITSAMPLING);
-
+    break;
+  } // hctiws
 #ifdef DEMOD_DBG_BITBUFSIZE
-    // Für Test Back-Buffer:
+  // Für Test Back-Buffer:
   dsp16_vect_move(demod_backbuf, &demod_backbuf[GMSK_BITSAMPLING], DEMOD_DBG_BITBUFSIZE*4-GMSK_BITSAMPLING);
   dsp16_vect_copy(&demod_backbuf[DEMOD_DBG_BITBUFSIZE*4-GMSK_BITSAMPLING], demod_in, GMSK_BITSAMPLING);
 #endif
 
 }
-*/
+
 
 //! @}
 
