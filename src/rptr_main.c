@@ -471,14 +471,18 @@ void handle_hfdata(void) {
       if (!transmission) {
         ctrldata.rxid++;
         headerdata.rxid = ctrldata.rxid;
-        voicedata.rxid  =  ctrldata.rxid;
+        voicedata.rxid  = ctrldata.rxid;
         transmission    = true;
       }
       headerdata.biterrs = dstar_decodeheader(&headerdata.header, rptr_getheader());
+      if (headerdata.biterrs > 0x7F) headerdata.biterrs = 0x7F;
+      // Checking header-crc:
+      if (!dstar_checkheader(&headerdata.header)) {
+	headerdata.biterrs |= 0x80;	// if corrupt set Bit7 of biterrs
+      } // fi crc
       append_crc_ccitt((char *)&headerdata, sizeof(headerdata));
       data_transmit((char *)&headerdata, sizeof(headerdata));
     } // fi start detected
-
   } // fi do something
   // Testet, ob was emfangen wurde.
   // sendet sofort an pc
