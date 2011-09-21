@@ -45,6 +45,7 @@
  * 		replace dsp16_vect_copy() by dsp16_vect_move() if mem is overlapped
  * 2011-09-20	remove possible raise conditions on adc-buffer, new demodulator code
  * 		cleanup code (remove old demod function)
+ * 2011-09-21	working sample clock-recover-algorithm
  */
 
 
@@ -369,6 +370,7 @@ A_ALIGNED const dsp16_t RXLowPassCoeff[] = {
 };
 */
 
+
 // Defines (some depends on filter-length)
 #define RXFILTCOEFFSIZE		(sizeof(RXLowPassCoeff)/sizeof(dsp16_t))
 #define DEMOD_ADC_SIZE		(RXFILTCOEFFSIZE+GMSK_BITSAMPLING-1)
@@ -404,7 +406,7 @@ Union32 gmsk_rxpll_accu;
 typedef void (*tgmsk_clockfkt)(S32, int);
 
 typedef enum {
-  DEMOD_unlocked, DEMOD_faded, DEMOD_sync, DEMOD_locked
+  DEMOD_unlocked, DEMOD_sync, DEMOD_locked, DEMOD_faded
 } tDemodState;
 
 
@@ -476,26 +478,40 @@ int	demod_state_cnt;
  *
  */
 
-#define DEMOD_THERSHOLD_PHASE	(GMSK_RCDEFAULT)	// compare-value correction
+#define DEMOD_THERSHOLD_PHASE	(GMSK_RCDEFAULT*3/4)	// compare-value correction
 #define DEMOD_BAD_EDGES		50	// Locked, if > -> faded
 #define DEMOD_GOOD_EDGES	50	// Faded, if > -> locked
 #define DEMOD_NOVALID_EDGES	150	// Faded, if > -> unlocked
 
-#define PLL_LOCK_KORR_FAK	0.005
-#define DEMOD_THERSHOLD_PLL	(GMSK_RCDEFAULT<<14)
+#define PLL_LOCK_KORR_FAK	0.01
+#define PLL_LOCK_DRIFT_FAK	0.005
+#define DEMOD_THERSHOLD_PLL	(GMSK_RCDEFAULT<<10)
 
 static void gmsk_faded_fkt(S32 correction, int bits_since_lastcorr);	// Forward
 
+#define GMSK_PLLMINPERIOD	(GMSK_PLLDEFAULT-(GMSK_PLLDEFAULT/100))	// ^= 4848baud
+#define GMSK_PLLMAXPERIOD	(GMSK_PLLDEFAULT+(GMSK_PLLDEFAULT/100))	// ^= 4752baud
+
 static void gmsk_locked_fkt(S32 correction, int bits_since_lastcorr) {
-  S32 clock_difference = ((correction-demod_lastkorr)<<16) / bits_since_lastcorr;
+//  S32 clock_difference = ((correction-demod_lastkorr)<<16) / bits_since_lastcorr;
   Average32(demod_korr,  correction<<16, PLL_LOCK_KORR_FAK);
-  Average32(demod_drift, clock_difference, PLL_LOCK_KORR_FAK);
+//  Average32(demod_drift, clock_difference, PLL_LOCK_DRIFT_FAK);
   if (abs(demod_korr) > DEMOD_THERSHOLD_PLL) {
-    gmsk_phase_corr = __builtin_sats(demod_korr, 20, 6);
-    //gmsk_rxpll_clk.u32 += __builtin_sats(demod_drift, 0, 17);
-    demod_korr = 0;
+    U32 new_rxpll_period;
+    gpio0_set(DEBUG_PIN2);
+    gmsk_phase_corr = __builtin_sats(correction, 5, 7);
+    new_rxpll_period = gmsk_rxpll_clk.u32 + __builtin_sats(demod_korr, 5, 17);
+    if (new_rxpll_period > GMSK_PLLMAXPERIOD)
+      gmsk_rxpll_clk.u32 = GMSK_PLLMAXPERIOD;
+    else if (new_rxpll_period < GMSK_PLLMINPERIOD)
+      gmsk_rxpll_clk.u32 = GMSK_PLLMINPERIOD;
+    else
+      gmsk_rxpll_clk.u32 = new_rxpll_period;
+    demod_korr  = 0;
+  //  demod_drift = 0;
+    gpio0_clr(DEBUG_PIN2);
   } // fi correct clock
-  if (abs(correction) > DEMOD_THERSHOLD_PHASE) {
+  if (abs(correction) > (DEMOD_THERSHOLD_PHASE)) {
     if (++demod_state_cnt > DEMOD_BAD_EDGES) {
       demod_clockrecover = &gmsk_faded_fkt;
       demod_state = DEMOD_faded;
@@ -507,14 +523,14 @@ static void gmsk_locked_fkt(S32 correction, int bits_since_lastcorr) {
 }
 
 
-#define PLL_SYNC_KORR_FAK	0.02
-#define DEMOD_EDGES_TO_LOCK	32
+#define PLL_SYNC_KORR_FAK	0.05
+#define DEMOD_EDGES_TO_LOCK	64
 
 static void gmsk_sync_fkt(S32 correction, int bits_since_lastcorr) {
-  S32 clock_difference = ((correction-demod_lastkorr)<<16) / bits_since_lastcorr;
+//  S32 clock_difference = ((correction-demod_lastkorr)<<16) / bits_since_lastcorr;
   Average32(demod_korr,  correction<<16, PLL_SYNC_KORR_FAK);
-  Average32(demod_drift, clock_difference, PLL_SYNC_KORR_FAK);
-  gmsk_phase_corr = __builtin_sats(correction, 4, 7);
+//  Average32(demod_drift, clock_difference, PLL_SYNC_KORR_FAK);
+  gmsk_phase_corr = __builtin_sats(correction, 2, 8);
   // change state to sync if we are in phase:
   if ( ++demod_state_cnt > DEMOD_EDGES_TO_LOCK) {
     demod_clockrecover = &gmsk_locked_fkt;
@@ -539,10 +555,15 @@ static void gmsk_unlocked_fkt(S32 correction, int bits_since_lastcorr) {
 
 
 static void gmsk_faded_fkt(S32 correction, int bits_since_lastcorr) {
+//  S32 clock_difference = ((correction-demod_lastkorr)<<16) / bits_since_lastcorr;
+  Average32(demod_korr,  correction<<16, PLL_LOCK_KORR_FAK);
+//  Average32(demod_drift, clock_difference, PLL_LOCK_DRIFT_FAK);
   if (abs(correction) < DEMOD_THERSHOLD_PHASE) {
+    gmsk_phase_corr = __builtin_sats(correction, 3, 6);
     if (++demod_state_cnt > DEMOD_GOOD_EDGES) {
-      demod_clockrecover = &gmsk_locked_fkt;
-      demod_state = DEMOD_locked;
+      gmsk_rxpll_clk.u32 = GMSK_PLLDEFAULT;
+      demod_clockrecover = &gmsk_sync_fkt;
+      demod_state = DEMOD_sync;
       demod_state_cnt = 0;
     }
   } else {
@@ -569,6 +590,7 @@ static __inline void gmsk_demod_sync(void) {
   demod_clockrecover = &gmsk_sync_fkt;
   gmsk_rxpll_clk.u32 = GMSK_PLLDEFAULT;
   demod_state = DEMOD_sync;
+  demod_state_cnt = 0;
 }
 
 
@@ -601,7 +623,7 @@ INTERRUPT_FUNC gmsk_samplestart_int(void) {
   gmsk_rxpll_accu.u16[0] = 0;	// Clear Alternate-Bit
   gmsk_rxpll_accu.u32 += gmsk_rxpll_clk.u16[1];
 #ifdef DEBUG_CLOCK_RECOVER
-  dac_modulate(demod_filt[demod_bitphasecnt]<<1);
+  dac_modulate(demod_filt[demod_bitphasecnt+2]<<1);
 #endif
   demod_capture[demod_bitphasecnt] = adc_val;	// fill up sample buffer
   if (++demod_bitphasecnt >= GMSK_BITSAMPLING ) {
@@ -646,7 +668,6 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
     S32 clockcorr;
     int cnt, flanke = 0;
     //if ((demod_shr&0xC0000000)==0x40000000)
-    gpio0_set(DEBUG_PIN2);
     // detect phase of zero-crossings (ZC)
     for (cnt = DEMOD_ZEROCR_POS; cnt < DEMOD_FILT_SIZE; cnt++) {
       if ((demod_filt[cnt-1]&0x8000) != (demod_filt[cnt]&0x8000)) {
@@ -661,7 +682,6 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
     demod_clockrecover(clockcorr, demod_korrcnt);
     demod_korrcnt  = 0;
     demod_lastkorr = clockcorr;
-    gpio0_clr(DEBUG_PIN2);
   } // fi bit changed
 
   demod_filt[0] = demod_filt[DEMOD_FILT_SIZE-2];	// keep last samples
@@ -685,8 +705,7 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
   pattern = demod_shr&GMSK_PATTERN_MASK;
   switch (pattern) {
   case GMSK_SYNCPATTERN:
-    gmsk_demod_sync();				// bedingungsloses Wechseln nach SYNC
-    demod_rxbitcnt = 0;
+    if (demod_state < DEMOD_sync) gmsk_demod_sync();	// bedingtes Wechseln nach SYNC
     break;
   case GMSK_SYNCSTART:
     demod_rxbitcnt = 0;
