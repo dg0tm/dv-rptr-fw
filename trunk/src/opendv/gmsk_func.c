@@ -44,7 +44,7 @@
  * 2011-09-19	modified shaping function (180° phase shifted)
  * 		replace dsp16_vect_copy() by dsp16_vect_move() if mem is overlapped
  * 2011-09-20	remove possible raise conditions on adc-buffer, new demodulator code
- * 		cleeanup code (remove old demod function)
+ * 		cleanup code (remove old demod function)
  */
 
 
@@ -439,6 +439,7 @@ int	demod_korrcnt;		// counter of bits, since last call of clock_recover()
 dsp32_t demod_lastkorr;		// stored correction after call of clock_recover()
 S32	demod_korr;		// use this th have a filtered value of clock drift
 S32	demod_drift;		// avaraged differences between 2 corr values
+int	demod_state_cnt;
 
 
 // Demodulator Int simple version
@@ -475,37 +476,51 @@ S32	demod_drift;		// avaraged differences between 2 corr values
  *
  */
 
+#define DEMOD_THERSHOLD_PHASE	(GMSK_RCDEFAULT)	// compare-value correction
+#define DEMOD_BAD_EDGES		50	// Locked, if > -> faded
+#define DEMOD_GOOD_EDGES	50	// Faded, if > -> locked
+#define DEMOD_NOVALID_EDGES	150	// Faded, if > -> unlocked
 
-#define DEMOD_THERSHOLD_PLL	(GMSK_RCDEFAULT<<14)
 #define PLL_LOCK_KORR_FAK	0.005
+#define DEMOD_THERSHOLD_PLL	(GMSK_RCDEFAULT<<14)
+
+static void gmsk_faded_fkt(S32 correction, int bits_since_lastcorr);	// Forward
 
 static void gmsk_locked_fkt(S32 correction, int bits_since_lastcorr) {
   S32 clock_difference = ((correction-demod_lastkorr)<<16) / bits_since_lastcorr;
   Average32(demod_korr,  correction<<16, PLL_LOCK_KORR_FAK);
   Average32(demod_drift, clock_difference, PLL_LOCK_KORR_FAK);
   if (abs(demod_korr) > DEMOD_THERSHOLD_PLL) {
-    gmsk_phase_corr = __builtin_sats(demod_korr, 16, 6);
+    gmsk_phase_corr = __builtin_sats(demod_korr, 20, 6);
     //gmsk_rxpll_clk.u32 += __builtin_sats(demod_drift, 0, 17);
     demod_korr = 0;
   } // fi correct clock
+  if (abs(correction) > DEMOD_THERSHOLD_PHASE) {
+    if (++demod_state_cnt > DEMOD_BAD_EDGES) {
+      demod_clockrecover = &gmsk_faded_fkt;
+      demod_state = DEMOD_faded;
+      demod_state_cnt = 0;
+    }
+  } else if (demod_state_cnt > 0) {
+    demod_state_cnt--;
+  }
 }
 
+
 #define PLL_SYNC_KORR_FAK	0.02
-#define DEMOD_THRESHOLD_KORR	(GMSK_RCDEFAULT<<14)
-#define DEMOD_THRESHOLD_DRIFT	(GMSK_RCDEFAULT<<8)
+#define DEMOD_EDGES_TO_LOCK	32
 
 static void gmsk_sync_fkt(S32 correction, int bits_since_lastcorr) {
   S32 clock_difference = ((correction-demod_lastkorr)<<16) / bits_since_lastcorr;
   Average32(demod_korr,  correction<<16, PLL_SYNC_KORR_FAK);
   Average32(demod_drift, clock_difference, PLL_SYNC_KORR_FAK);
-  gmsk_phase_corr = __builtin_sats(correction, 1, 3);
+  gmsk_phase_corr = __builtin_sats(correction, 4, 7);
   // change state to sync if we are in phase:
-  /*
-  if ( (demod_korr < DEMOD_THRESHOLD_KORR) && (demod_drift < DEMOD_THRESHOLD_DRIFT) ) {
+  if ( ++demod_state_cnt > DEMOD_EDGES_TO_LOCK) {
     demod_clockrecover = &gmsk_locked_fkt;
     demod_state = DEMOD_locked;
+    demod_state_cnt = 0;
   }
-  */
 //  dac_modulate(demod_korr/4);
 }
 
@@ -514,8 +529,9 @@ static void gmsk_sync_fkt(S32 correction, int bits_since_lastcorr) {
 // Bekommt Wert, der der Abweichung in Timer-Schritten entspricht
 // Funktion wird bei jeder Flanke aufgerufen und berechnet einen Wert für die DCD.
 static void gmsk_unlocked_fkt(S32 correction, int bits_since_lastcorr) {
-  demod_korr  = correction<<16;
-  demod_drift = ((correction-demod_lastkorr)<<16) / bits_since_lastcorr;
+  demod_korr  = 0;
+  demod_drift = 0;
+  demod_state_cnt = 0;
   // Schnell hin zum NDG / jitter fast to catch ZC
   gmsk_phase_corr = __builtin_sats(correction, 0, 9);
 }
@@ -523,7 +539,21 @@ static void gmsk_unlocked_fkt(S32 correction, int bits_since_lastcorr) {
 
 
 static void gmsk_faded_fkt(S32 correction, int bits_since_lastcorr) {
+  if (abs(correction) < DEMOD_THERSHOLD_PHASE) {
+    if (++demod_state_cnt > DEMOD_GOOD_EDGES) {
+      demod_clockrecover = &gmsk_locked_fkt;
+      demod_state = DEMOD_locked;
+      demod_state_cnt = 0;
+    }
+  } else {
+    if (--demod_state_cnt < (-DEMOD_NOVALID_EDGES)) {
+      demod_clockrecover = &gmsk_unlocked_fkt;
+      demod_state = DEMOD_unlocked;
+      demod_state_cnt = 0;
+    }
+  }
 }
+
 
 
 
@@ -620,13 +650,13 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
     // detect phase of zero-crossings (ZC)
     for (cnt = DEMOD_ZEROCR_POS; cnt < DEMOD_FILT_SIZE; cnt++) {
       if ((demod_filt[cnt-1]&0x8000) != (demod_filt[cnt]&0x8000)) {
-	flanke = cnt-DEMOD_ZEROCR_POS-1;		// position of an edge found
+	flanke = cnt;		// position of an edge found
 	continue;
       } // fi sign-compare
     } // rof
     // a ZC should occur on position 1 - than no correction is necssary
     clockcorr = ((flanke-DEMOD_ZEROCR_POS)*GMSK_RCDEFAULT) +
-	        gmsk_calc_zerocorr(demod_filt[flanke], demod_filt[flanke+1]);
+	        gmsk_calc_zerocorr(demod_filt[flanke-1], demod_filt[flanke]);
     // Position 1 is 2 samples before the bitmax-sample, see defines above
     demod_clockrecover(clockcorr, demod_korrcnt);
     demod_korrcnt  = 0;
