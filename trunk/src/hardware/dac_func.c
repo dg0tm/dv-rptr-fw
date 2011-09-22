@@ -26,6 +26,7 @@
  * 2011-08-30	Remove AD5260 single DAC code (used on DV-Modem)...
  * 2011-09-03	MODFDIS bit @ dac_init()
  * 2011-09-17	dac_modulate() uses 15bit not 16bit as maximum values
+ * 2011-09-22	bugfix DAC_MIDDLE value
  */
 
 
@@ -35,12 +36,12 @@
 
 #include <compiler.h>
 
-#define DAC_MIDDLE_LEVEL	0x07FFF		// Value for 1/2 Vref
+#define DAC_MIDDLE_LEVEL	0x07FF		// Value for 1/2 Vref
 
-#define DAC_PWRDOWN_VAL		0x6000		// PD = 10 100K->GND
-
+#define DAC_PWRDOWN_VAL		0x2000		// PD = 10 100K->GND
 #define DAC_REFBUFFER_MASK	0x4000
 #define DAC_CH_AB_MASK		0x8000
+
 
 #ifdef DVATRX
 #define DAC_CHA_MASK		DAC_REFBUFFER_MASK
@@ -107,7 +108,7 @@ __inline void dac_transmit(unsigned short int data) {
 
 
 __inline void dac_modulate(int value) {
-  AVR32_SPI.tdr = dac_select_mask | (__builtin_sats(value, 3, 12)+0x0800);
+  AVR32_SPI.tdr = dac_select_mask | (__builtin_sats(value, 3, 12)+(DAC_MIDDLE_LEVEL+1));
 }
 
 
@@ -123,15 +124,25 @@ void dac_waitidle(void) {
 
 
 void dac_set_active_ch(char no) {
+  dac_waitidle();
   // Powerdown opposite DAC-Channel:
   AVR32_SPI.tdr = ((no)?DAC_CHA_MASK:DAC_CHB_MASK) | DAC_PWRDOWN_VAL | DAC_MIDDLE_LEVEL;
   // Select new Channel (with BUF enabled)
   dac_select_mask = (no)?DAC_CHB_MASK:DAC_CHA_MASK;
-  dac_waitidle();
 }
 
 
 __inline char dac_get_active_ch(void) {
   return (dac_select_mask&0x8000)?1:0;
+}
+
+
+void dac_power_ctrl(char powermode) {
+  dac_waitidle();
+  if (powermode) {	// power-up
+    AVR32_SPI.tdr = dac_select_mask | DAC_MIDDLE_LEVEL;
+  } else {		// power-down used DAC-Channel
+    AVR32_SPI.tdr = dac_select_mask | DAC_PWRDOWN_VAL | DAC_MIDDLE_LEVEL;
+  }
 }
 

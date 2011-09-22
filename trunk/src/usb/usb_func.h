@@ -35,6 +35,8 @@ typedef void (*tusb_to_func)(int);	// void-int Function
 
 extern tusbfunction usb_handler;
 
+extern void rptr_reset_inferface(void);	// called, if disconnected
+
 void	usb_init(void);
 void	usb_exit(void);
 

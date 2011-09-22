@@ -57,7 +57,7 @@
 // GMSK Timer + Ints
 #define DVRX_TIMER_CH		0
 #define DVTX_TIMER_CH		1
-#define IDLE_TIMER_CH		1		// statt Transmit
+#define IDLE_TIMER_CH		0		// statt Receive
 
 #define DV_MODOUT_INTPRIO	AVR32_INTC_INT2
 #define DV_MODWRK_INTPRIO	AVR32_INTC_INT1

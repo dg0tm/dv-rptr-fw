@@ -36,6 +36,7 @@
 #define IDLE_TIMER		AVR32_TC.channel[IDLE_TIMER_CH]
 #define	IDLE_TIMER_IRQ		(AVR32_TC_IRQ0+IDLE_TIMER_CH)
 
+#define IDLE_PERIOD		CALC_CLOCKS_FROM(25)	// 25ms
 
 /*! \name External Interrupt Controller Functions
  */
@@ -151,6 +152,7 @@ tidleproc idle_handler;
 INTERRUPT_FUNC idle_timer_func(void) {	// Weckt den µC aus Sleep, Watchdog in Mainloop
   IDLE_TIMER.sr;        // Read Status to acknowledge INT
   if (idle_handler != NULL) idle_handler();
+  gpio0_tgl(DEBUG_PIN1);
 }
 
 
@@ -203,7 +205,11 @@ void idle_timer_start(void) {
     AVR32_TC_NONE << AVR32_TC_ACPC_OFFSET |
     AVR32_TC_NONE << AVR32_TC_ACPA_OFFSET |
     1 << AVR32_TC_WAVE_OFFSET |
+#ifdef IDLE_PERIOD
+    AVR32_TC_WAVSEL_UP_AUTO << AVR32_TC_WAVSEL_OFFSET |		// Up, RC-Trigger resets counter
+#else
     AVR32_TC_WAVSEL_UP_NO_AUTO << AVR32_TC_WAVSEL_OFFSET |      // Up, ohne RC-Trigger
+#endif
     FALSE << AVR32_TC_ENETRG_OFFSET |
     AVR32_TC_EEVT_TIOB_INPUT << AVR32_TC_EEVT_OFFSET |
     AVR32_TC_EEVTEDG_NO_EDGE << AVR32_TC_EEVTEDG_OFFSET |
@@ -214,7 +220,12 @@ void idle_timer_start(void) {
     AVR32_TC_TCCLKS_TIMER_CLOCK5 << AVR32_TC_TCCLKS_OFFSET;     // MASTERCLK/128
   INTC_register_interrupt(&idle_timer_func, IDLE_TIMER_IRQ, AVR32_INTC_INT0);
   idle_handler   = NULL;
+#ifdef IDLE_PERIOD
+  IDLE_TIMER.rc  = IDLE_PERIOD;
+  IDLE_TIMER.ier = AVR32_TC_CPCS_MASK;	// Counter Compare-C
+#else
   IDLE_TIMER.ier = AVR32_TC_COVFS_MASK; // Counter Overflow
+#endif
   IDLE_TIMER.ccr = AVR32_TC_SWTRG_MASK | AVR32_TC_CLKEN_MASK;
 }
 

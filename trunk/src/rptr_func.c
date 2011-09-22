@@ -39,6 +39,7 @@
 #include "crc.h"
 #include "hw_defs.h"
 #include "gpio_func.h"
+#include "int_func.h"		// idle_timer()
 #include "twi_func.h"
 
 #include "compiler.h"
@@ -149,6 +150,9 @@ void rptr_stopped(void) {
   disable_ptt();
   RPTR_Flags &= ~RPTR_TRANSMITTING;
   LED_Clear(LED_RED);
+#if (DVTX_TIMER_CH==IDLE_TIMER_CH)
+  idle_timer_start();
+#endif
 }
 
 // rptr_transmit_stopframe() append a END-OF-TRANSMISSION id after voice data (no slowdata)
@@ -439,6 +443,9 @@ void rptr_copyrxvoice(tds_voicedata *dest, unsigned char nr) {
 
 // später mit update_header (Übergabe)
 void rptr_transmit(void) {
+#if (DVTX_TIMER_CH==IDLE_TIMER_CH)
+  idle_timer_stop();
+#endif
   TxVoice_RdPos = 0;
   TxVoice_WrPos = 0;
   if (is_pttactive()) {

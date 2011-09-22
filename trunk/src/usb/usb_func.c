@@ -129,9 +129,7 @@ static void usb_shutdown_func(void) {
   AVR32_USBB.usbcon = AVR32_USBB_UIMOD_MASK | AVR32_USBB_OTGPADE_MASK; // Disable USB-Ints
   exit_usb_hardware();
   usb_handler = usb_wait_for_connect;
-#ifdef NOTIFY_USBHOST
-  bf_send2C5(DVsendMessage, 16, USBDisconMsg);
-#endif
+  rptr_reset_inferface();
 }
 
 
