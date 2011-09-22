@@ -500,34 +500,42 @@ int	demod_state_cnt;
 #define DEMOD_GOOD_EDGES	50	// Faded, if > -> locked
 #define DEMOD_NOVALID_EDGES	150	// Faded, if > -> unlocked
 
-#define PLL_LOCK_KORR_FAK	0.01
+#define PLL_LOCK_KORR_FAK	0.050	// ok.
 #define PLL_LOCK_DRIFT_FAK	0.005
-#define DEMOD_THERSHOLD_PLL	(GMSK_RCDEFAULT<<10)
+#define DEMOD_THERSHOLD_PLL	(GMSK_RCDEFAULT<<11)
 
 static void gmsk_faded_fkt(S32 correction);	// Forward
 
 #define GMSK_PLLMINPERIOD	(GMSK_PLLDEFAULT-(GMSK_PLLDEFAULT/100))	// ^= 4848baud
 #define GMSK_PLLMAXPERIOD	(GMSK_PLLDEFAULT+(GMSK_PLLDEFAULT/100))	// ^= 4752baud
 
+/* generell scheint nach dem Ende von Lock ein Fehler aufzutauchen: gmsk_rxpll_clk immer etwas zu lang
+ *
+ */
 static void gmsk_locked_fkt(S32 correction) {
-//  S32 clock_difference = ((correction-demod_lastkorr)<<16) / demod_korrcnt;
+  U32 new_rxpll_period;
+  S32 clock_difference = ((correction-demod_lastkorr)<<16) / demod_korrcnt;
   Average32(demod_korr,  correction<<16, PLL_LOCK_KORR_FAK);
-//  Average32(demod_drift, clock_difference, PLL_LOCK_DRIFT_FAK);
+  Average32(demod_drift, clock_difference, PLL_LOCK_DRIFT_FAK);
+  gmsk_phase_corr = __builtin_sats(correction, 4, 7);
   if (abs(demod_korr) > DEMOD_THERSHOLD_PLL) {
-    U32 new_rxpll_period;
     gpio0_set(DEBUG_PIN2);
-    gmsk_phase_corr = __builtin_sats(correction, 5, 7);
-    new_rxpll_period = gmsk_rxpll_clk.u32 + __builtin_sats(demod_korr, 5, 17);
-    if (new_rxpll_period > GMSK_PLLMAXPERIOD)
-      gmsk_rxpll_clk.u32 = GMSK_PLLMAXPERIOD;
-    else if (new_rxpll_period < GMSK_PLLMINPERIOD)
-      gmsk_rxpll_clk.u32 = GMSK_PLLMINPERIOD;
-    else
-      gmsk_rxpll_clk.u32 = new_rxpll_period;
-    demod_korr  = 0;
-  //  demod_drift = 0;
+
     gpio0_clr(DEBUG_PIN2);
-  } // fi correct clock
+  }
+  if (abs(demod_korr) < 0x00000FFF) {
+    // noch funktioniert es nicht wie gedacht...
+    new_rxpll_period = gmsk_rxpll_clk.u32 + __builtin_sats(demod_korr, 0, 11);	// Fine
+  } else {
+    new_rxpll_period = gmsk_rxpll_clk.u32 + __builtin_sats(demod_korr, 13, 11);	// ok für +/- 20Hz
+  }
+  if (new_rxpll_period > GMSK_PLLMAXPERIOD)
+    gmsk_rxpll_clk.u32 = GMSK_PLLMAXPERIOD;
+  else if (new_rxpll_period < GMSK_PLLMINPERIOD)
+    gmsk_rxpll_clk.u32 = GMSK_PLLMINPERIOD;
+  else
+    gmsk_rxpll_clk.u32 = new_rxpll_period;
+//  } // fi correct clock
   if (abs(correction) > (DEMOD_THERSHOLD_PHASE)) {
     if (++demod_state_cnt > DEMOD_BAD_EDGES) {
       demod_clockrecover = &gmsk_faded_fkt;
@@ -547,7 +555,7 @@ static void gmsk_sync_fkt(S32 correction) {
 //  S32 clock_difference = ((correction-demod_lastkorr)<<16) / demod_korrcnt;
   Average32(demod_korr,  correction<<16, PLL_SYNC_KORR_FAK);
 //  Average32(demod_drift, clock_difference, PLL_SYNC_KORR_FAK);
-  gmsk_phase_corr = __builtin_sats(correction, 2, 8);
+  gmsk_phase_corr = __builtin_sats(correction, 1, 8);
   // change state to sync if we are in phase:
   if ( ++demod_state_cnt > DEMOD_EDGES_TO_LOCK) {
     demod_clockrecover = &gmsk_locked_fkt;
@@ -576,7 +584,7 @@ static void gmsk_faded_fkt(S32 correction) {
   Average32(demod_korr,  correction<<16, PLL_LOCK_KORR_FAK);
 //  Average32(demod_drift, clock_difference, PLL_LOCK_DRIFT_FAK);
   if (abs(correction) < DEMOD_THERSHOLD_PHASE) {
-    gmsk_phase_corr = __builtin_sats(correction, 3, 6);
+    gmsk_phase_corr = __builtin_sats(correction, 4, 6);
     if (++demod_state_cnt > DEMOD_GOOD_EDGES) {
       gmsk_rxpll_clk.u32 = GMSK_PLLDEFAULT;
       demod_clockrecover = &gmsk_sync_fkt;
@@ -614,23 +622,17 @@ static __inline void gmsk_demod_sync(void) {
 // if the edge is not on correct position, we must keep an eye on
 // the previous and current bit-max.
 static __inline void demod_correct_bits(int edge_zc) {
-  U32 bits = (demod_shr << 1) & 0x7FFFFFFF;
+  U32 bits = demod_shr & 0xBFFFFFFF;
   if (edge_zc != DEMOD_ZEROCR_POS) {
+    // ToDo
+    // wo ist der Fehler!
     if (demod_filt[edge_zc-(GMSK_BITSAMPLING/2)] > 0) {
-      demod_shr |= demod_pos_level;
+      bits |= (demod_pos_level>>1);
     } else {
-      demod_shr |= demod_neg_level;
-    }
-    demod_shr >>= 1;
-    edge_zc += GMSK_BITSAMPLING/2;
-    if (edge_zc >= DEMOD_FILT_SIZE) edge_zc = DEMOD_FILT_SIZE-1;
-    if (demod_filt[edge_zc] > 0) {
-      demod_shr |= demod_pos_level;
-    } else {
-      demod_shr |= demod_neg_level;
+      bits |= (demod_neg_level>>1);
     }
   }
-  demod_shr = bits;
+  //demod_shr = bits; // <- sobald drin geht net
 }
 
 
@@ -704,9 +706,9 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
   // check, if bit is not the same like the bit before
   // if true a edge must be between these bits
   demod_korrcnt++;
-  //if ( ((demod_shr&0xC0000000)==0x80000000) || ((demod_shr&0xC0000000)==0x40000000) ) {
   // detect phase of zero-crossings (ZC)
   clockcorr = 0;
+  if ( ((demod_shr&0xC0000000)==0x80000000) || ((demod_shr&0xC0000000)==0x40000000) ) {
   for (cnt = DEMOD_ZEROCR_POS; cnt < DEMOD_FILT_SIZE; cnt++) {
     if ((demod_filt[cnt-1]&0x8000) != (demod_filt[cnt]&0x8000)) {
       // find the "largest" edge (in noisy signals):
@@ -714,18 +716,20 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
       if (zc_slope > clockcorr) {
 	flanke = cnt;		// position of an edge found
 	clockcorr = zc_slope;
+//	continue;	// un-comment: first edge only.
       }
     } // fi sign-compare
   } // rof
+  } // fi
   if (clockcorr > 0) {	// a edge is in the new bit-samples
     // a ZC should occur on position 1 - than no correction is necssary
     clockcorr = ((flanke-DEMOD_ZEROCR_POS)*GMSK_RCDEFAULT) +
 	        gmsk_calc_zerocorr(demod_filt[flanke-1], demod_filt[flanke]);
     // Position 1 is 2 samples before the bitmax-sample, see defines above
     demod_clockrecover(clockcorr);
+    demod_correct_bits((clockcorr/GMSK_RCDEFAULT) + DEMOD_ZEROCR_POS);
     demod_korrcnt  = 0;
     demod_lastkorr = clockcorr;
-    demod_correct_bits(clockcorr/GMSK_RCDEFAULT + DEMOD_ZEROCR_POS);
   } // fi edge detected
 
   // keep samples of current bit:
