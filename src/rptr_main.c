@@ -553,7 +553,7 @@ int main(void) {
 
   //set_dac_power_mode(TWI_DAC_POWERUP);
   // Enable Reference-DAC MAX5820 (called, if TX swichted on)
-  //rptr_receive();
+  rptr_receive();
   // enable receiving (called, if receiver is switched on)
 
   while (TRUE) {			// *** Main-Loop ***

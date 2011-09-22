@@ -152,7 +152,6 @@ tidleproc idle_handler;
 INTERRUPT_FUNC idle_timer_func(void) {	// Weckt den µC aus Sleep, Watchdog in Mainloop
   IDLE_TIMER.sr;        // Read Status to acknowledge INT
   if (idle_handler != NULL) idle_handler();
-  gpio0_tgl(DEBUG_PIN1);
 }
 
 
