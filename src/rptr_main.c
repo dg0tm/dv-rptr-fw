@@ -46,13 +46,17 @@
  * 2011-09-06 V0.10  gmsk: Additional Interrupt-Handler keeps critical Timer-based ADC-start, DAC-out
  * 		     with a minimum of jitter in the case of duplex operation
  * 2011-09-18 V0.12  various tests with demodulator.
+ * 2011-92-22 V0.20  idle_timer feature, prevent TX, if not enabled. RX is swichable to.
+ * 		     disabling RX+TX if USB cable a disconnected
+ * 		     if TX switched off, DAC and REF-DAC turned to power-down
+ *
  *
  * ToDo:
- * - enable / disable receiver (if disabled keep firmware alive by a idle-counter)
- * - enable / disable transmitter (logic only, return NAK on START / SYNC cmd if off)
  * - Transmitter-State enumeration for GET_STATUS
  * - PC watchdog
- * - first SYNC detect -> Message (early switch on Transceiver)
+ * ~ first SYNC detect -> Message (early switch on Transceiver)
+ * + enable / disable receiver (if disabled keep firmware alive by a idle-counter)
+ * + enable / disable transmitter (logic only, return NAK on START / SYNC cmd if off)
  * + bugfix transmit-logic
  * + configuration: TXDelay, Modulation-Vss ...
  */
@@ -68,6 +72,7 @@
 #include "controls.h"
 
 #include "gpio_func.h"		// GPIO-functions and macros (PTT, LEDs...)
+#include "int_func.h"		// idle_timer()
 
 #include "usb_func.h"
 
@@ -278,7 +283,21 @@ __inline void handle_pc_paket(int len) {
       answer.data[PKT_PARAM_IDX+5] = rptr_get_unsend();	// unsend frames left (incl. gaps)
       answer.head.len = 7;
     } else if (len==2) {		// enable/disable
-      status_control = (status_control & 0xF0) | (rxdatapacket.data[PKT_PARAM_IDX] & 0x0F);
+      U8 new_control = (status_control & 0xF0) | (rxdatapacket.data[PKT_PARAM_IDX] & 0x0F);
+      if ((new_control^status_control) & STA_RXENABLE_MASK) {
+	if (new_control & STA_RXENABLE_MASK) {
+	  rptr_receive();			// enable receiving
+	} else {
+	  idle_timer_start();			// disable receiving
+	}
+      } // fi sw RX
+      if ( (new_control^status_control) & STA_TXENABLE_MASK) {
+        // Enable / Disable selected output of modulation DAC
+        dac_power_ctrl(new_control&STA_TXENABLE_MASK);
+	// Enable / Disable Reference-DAC MAX5820
+        set_dac_power_mode((new_control&STA_TXENABLE_MASK)?TWI_DAC_POWERUP:TWI_DAC_POWERDOWN);
+      } // fi sw TX
+      status_control = new_control;
       pc_send_byte(ACK);
     } else {				// invalid - more than one parameter byte
       pc_send_byte(NAK);
@@ -317,20 +336,29 @@ __inline void handle_pc_paket(int len) {
     if (config_setup(rxdatapacket.data+PKT_PARAM_IDX, len-1)) {
       pc_send_byte(ACK);
     } else {
-      pc_send_byte(NAK);
+
     }
     break;
   case RPTR_START:		// early Turn-On xmitter, if configured a long TXD
-    rptr_transmit_early_start(); // PTTon, only if TXD > Header-TX-Lengh 137.5ms
+    if (status_control & STA_TXENABLE_MASK)
+      rptr_transmit_early_start(); // PTTon, only if TXD > Header-TX-Lengh 137.5ms
+    else
+      pc_send_byte(NAK);
     break;
   case RPTR_HEADER:		// start transmitting TXDelay-Preamble-Start-Header
-    rptr_transmit();		// Turn on Xmitter
+    if (status_control & STA_TXENABLE_MASK)
+      rptr_transmit();		// Turn on Xmitter
+    else
+      pc_send_byte(NAK);
     // keep 2 bytes for future use, keep layout identical to RX
     rptr_init_header((tds_header *)&rxdatapacket.data[PKT_PARAM_IDX+2]);
     break;
   case RPTR_RXSYNC:		// start transmitting TXDelay-Preamble-Start-Header
-    if (!is_pttactive()) rptr_transmit();	// Turn on Xmitter only if PTT off
-    // (transmission use last header)
+    if (status_control & STA_TXENABLE_MASK) {
+      if (!is_pttactive()) rptr_transmit();	// Turn on Xmitter only if PTT off
+      // (transmission use last header)
+    } else
+      pc_send_byte(NAK);
     break;
   case RPTR_DATA:		// transmit data (voice and slowdata or sync)
 #ifdef PLAIN_SLOWDATA		// scramble data (if was plain)
@@ -489,6 +517,18 @@ void handle_hfdata(void) {
 }
 
 
+void rptr_reset_inferface(void) {	// usb disconneced
+  if (data_received == cdc_received) {	// we use USB CDC interface
+    status_control &= 0xF0;
+    idle_timer_start();			// disable receiving
+    // Disable Reference-DAC MAX5820
+    set_dac_power_mode(TWI_DAC_POWERDOWN);
+    // Disable selected output of modulation DAC
+    dac_power_ctrl(0);
+  } // fi CDC used
+}
+
+
 int main(void) {
   Disable_global_interrupt();		// Disable all interrupts.
 
@@ -506,13 +546,20 @@ int main(void) {
   Enable_global_interrupt();		// Enable all interrupts.
   LEDs_Off();
 
-  set_dac_power_mode(TWI_DAC_POWERUP);	// Enable Reference-DAC MAX5820
   cfg_apply();				// setup default config
 
-  rptr_receive();			// enable receiving.
+  idle_timer_start();			// keep µC alive to handle external WD, if
+  // no other activity (USB)
+
+  //set_dac_power_mode(TWI_DAC_POWERUP);
+  // Enable Reference-DAC MAX5820 (called, if TX swichted on)
+  //rptr_receive();
+  // enable receiving (called, if receiver is switched on)
 
   while (TRUE) {			// *** Main-Loop ***
+
     SLEEP();				// do nothing, until some IRQ wake the CPU
+
     watchdog();				// do external watchdog for STM706T
 
     handle_hfdata();			// look, if something to do with the HF interface

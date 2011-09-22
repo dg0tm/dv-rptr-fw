@@ -44,7 +44,8 @@
 #endif
 
 
-#define TWI_DAC_POWERUP		0x0C
+#define TWI_DAC_POWERUP		0x0C	// Power-Up both channels
+#define TWI_DAC_POWERDOWN	0x0F	// Power-Down, terminated outs 100k to GND
 
 
 void set_dac_power_mode(unsigned char mde);

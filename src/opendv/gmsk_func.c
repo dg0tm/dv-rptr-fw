@@ -46,6 +46,7 @@
  * 2011-09-20	remove possible raise conditions on adc-buffer, new demodulator code
  * 		cleanup code (remove old demod function)
  * 2011-09-21	working sample clock-recover-algorithm
+ * 2011-09-22	improved edge detect an bit-restore, need to be tested
  */
 
 
@@ -87,20 +88,33 @@
 #define GMSK_MOD_PHASE		((GMSK_MOD_MODULO*0x10000L)/GMSK_CLOCK)
 
 
-#define GMSK_RCVARIANZ		0x14000L
+#define TIMER_CMR_VALUE	( AVR32_TC_NONE << AVR32_TC_BSWTRG_OFFSET | \
+    AVR32_TC_NONE << AVR32_TC_BEEVT_OFFSET | \
+    AVR32_TC_NONE << AVR32_TC_BCPC_OFFSET | \
+    AVR32_TC_NONE << AVR32_TC_BCPB_OFFSET | \
+    AVR32_TC_NONE << AVR32_TC_ASWTRG_OFFSET | \
+    AVR32_TC_NONE << AVR32_TC_AEEVT_OFFSET | \
+    AVR32_TC_NONE << AVR32_TC_ACPC_OFFSET | \
+    AVR32_TC_NONE << AVR32_TC_ACPA_OFFSET | \
+    1 << AVR32_TC_WAVE_OFFSET | \
+    AVR32_TC_WAVSEL_UP_AUTO << AVR32_TC_WAVSEL_OFFSET | \
+    FALSE << AVR32_TC_ENETRG_OFFSET | \
+    AVR32_TC_EEVT_TIOB_INPUT << AVR32_TC_EEVT_OFFSET | \
+    AVR32_TC_EEVTEDG_NO_EDGE << AVR32_TC_EEVTEDG_OFFSET | \
+    FALSE << AVR32_TC_CPCDIS_OFFSET | \
+    FALSE << AVR32_TC_CPCSTOP_OFFSET | \
+    AVR32_TC_BURST_NOT_GATED << AVR32_TC_BURST_OFFSET | \
+    0 << AVR32_TC_CLKI_OFFSET | \
+    AVR32_TC_TCCLKS_TIMER_CLOCK2 << AVR32_TC_TCCLKS_OFFSET )
 
-#define SIGNAL_MIN_AMPLITUDE	60
-#define	SIGNAL_MAX_AMPLITUDE	450
 
 
-#define GMSK_PATTERN_MASK	0xFFFFFF00	// 24 bits
+// this defines are openDV/D-Star related!
+#define GMSK_PATTERN_MASK	0xFFFFFF00	// 24 bits to match patterns in rx-bitstream
 #define GMSK_SYNCPATTERN	0x55555500
 #define GMSK_SYNCSTART		0x0A6EAA00
-#define GMSK_SYNCSTOP		0xF590AA00	// inverted START Pattern
+#define GMSK_SYNCSTOP		0xF590AA00	// EOT, is inverted START Pattern
 #define GMSK_FRAMESYNC		0x162D5500	// all >> direction
-
-//#define GMSK_SYNC_MASK	0xFFFFFF00	// 24 bits
-//#define GMSK_FRAMESYNCMSK	0xFFFFFF00	// 24 bits
 
 
 
@@ -375,9 +389,12 @@ A_ALIGNED const dsp16_t RXLowPassCoeff[] = {
 #define RXFILTCOEFFSIZE		(sizeof(RXLowPassCoeff)/sizeof(dsp16_t))
 #define DEMOD_ADC_SIZE		(RXFILTCOEFFSIZE+GMSK_BITSAMPLING-1)
 
-#define DEMOD_FILT_SIZE		(GMSK_BITSAMPLING+2)	// 3rd pos is aliged too
-#define DEMOD_BITMAX_POS	(DEMOD_FILT_SIZE-1)	// last sample
-#define DEMOD_ZEROCR_POS	(DEMOD_BITMAX_POS - (GMSK_BITSAMPLING/2))
+// a buffer of 2 bittimes filtered samples:
+#define DEMOD_FILT_SIZE		(2*GMSK_BITSAMPLING)
+// by define, the algothim shifts the zero-crossing to sample 0 of the new 4 (pos 4):
+#define DEMOD_ZEROCR_POS	(GMSK_BITSAMPLING)
+// a bit-max value should appear 1/2bittime later ZC (on position 6):
+#define DEMOD_BITMAX_POS	(DEMOD_ZEROCR_POS+(GMSK_BITSAMPLING/2))	// last sample
 
 // Sample-Buffers:
 
@@ -403,7 +420,7 @@ Union32 gmsk_rxpll_clk;
 Union32 gmsk_rxpll_accu;
 
 
-typedef void (*tgmsk_clockfkt)(S32, int);
+typedef void (*tgmsk_clockfkt)(S32);
 
 typedef enum {
   DEMOD_unlocked, DEMOD_sync, DEMOD_locked, DEMOD_faded
@@ -470,7 +487,7 @@ int	demod_state_cnt;
 /* demod_clockrecover() functions
  * parameter correction: times (in TIMER-ticks) of phase fails
  * possible values are from -1562 to 6250 (sample period: 30MHz/19200)
- * parameter bits_since_lastcorr: number of bits (non-alternating) since last call
+ * global demod_korrcnt: number of bits (non-alternating) since last call
  * These function modify the gmsk_rxpll_clk period variable (32bit) to get in sync
  * with rx data stream.
  *
@@ -487,13 +504,13 @@ int	demod_state_cnt;
 #define PLL_LOCK_DRIFT_FAK	0.005
 #define DEMOD_THERSHOLD_PLL	(GMSK_RCDEFAULT<<10)
 
-static void gmsk_faded_fkt(S32 correction, int bits_since_lastcorr);	// Forward
+static void gmsk_faded_fkt(S32 correction);	// Forward
 
 #define GMSK_PLLMINPERIOD	(GMSK_PLLDEFAULT-(GMSK_PLLDEFAULT/100))	// ^= 4848baud
 #define GMSK_PLLMAXPERIOD	(GMSK_PLLDEFAULT+(GMSK_PLLDEFAULT/100))	// ^= 4752baud
 
-static void gmsk_locked_fkt(S32 correction, int bits_since_lastcorr) {
-//  S32 clock_difference = ((correction-demod_lastkorr)<<16) / bits_since_lastcorr;
+static void gmsk_locked_fkt(S32 correction) {
+//  S32 clock_difference = ((correction-demod_lastkorr)<<16) / demod_korrcnt;
   Average32(demod_korr,  correction<<16, PLL_LOCK_KORR_FAK);
 //  Average32(demod_drift, clock_difference, PLL_LOCK_DRIFT_FAK);
   if (abs(demod_korr) > DEMOD_THERSHOLD_PLL) {
@@ -526,8 +543,8 @@ static void gmsk_locked_fkt(S32 correction, int bits_since_lastcorr) {
 #define PLL_SYNC_KORR_FAK	0.05
 #define DEMOD_EDGES_TO_LOCK	64
 
-static void gmsk_sync_fkt(S32 correction, int bits_since_lastcorr) {
-//  S32 clock_difference = ((correction-demod_lastkorr)<<16) / bits_since_lastcorr;
+static void gmsk_sync_fkt(S32 correction) {
+//  S32 clock_difference = ((correction-demod_lastkorr)<<16) / demod_korrcnt;
   Average32(demod_korr,  correction<<16, PLL_SYNC_KORR_FAK);
 //  Average32(demod_drift, clock_difference, PLL_SYNC_KORR_FAK);
   gmsk_phase_corr = __builtin_sats(correction, 2, 8);
@@ -544,7 +561,7 @@ static void gmsk_sync_fkt(S32 correction, int bits_since_lastcorr) {
 // PLL-Korrektur-Funktion (3 Versionen):
 // Bekommt Wert, der der Abweichung in Timer-Schritten entspricht
 // Funktion wird bei jeder Flanke aufgerufen und berechnet einen Wert für die DCD.
-static void gmsk_unlocked_fkt(S32 correction, int bits_since_lastcorr) {
+static void gmsk_unlocked_fkt(S32 correction) {
   demod_korr  = 0;
   demod_drift = 0;
   demod_state_cnt = 0;
@@ -554,8 +571,8 @@ static void gmsk_unlocked_fkt(S32 correction, int bits_since_lastcorr) {
 
 
 
-static void gmsk_faded_fkt(S32 correction, int bits_since_lastcorr) {
-//  S32 clock_difference = ((correction-demod_lastkorr)<<16) / bits_since_lastcorr;
+static void gmsk_faded_fkt(S32 correction) {
+//  S32 clock_difference = ((correction-demod_lastkorr)<<16) / demod_korrcnt;
   Average32(demod_korr,  correction<<16, PLL_LOCK_KORR_FAK);
 //  Average32(demod_drift, clock_difference, PLL_LOCK_DRIFT_FAK);
   if (abs(correction) < DEMOD_THERSHOLD_PHASE) {
@@ -591,6 +608,29 @@ static __inline void gmsk_demod_sync(void) {
   gmsk_rxpll_clk.u32 = GMSK_PLLDEFAULT;
   demod_state = DEMOD_sync;
   demod_state_cnt = 0;
+}
+
+
+// if the edge is not on correct position, we must keep an eye on
+// the previous and current bit-max.
+static __inline void demod_correct_bits(int edge_zc) {
+  U32 bits = (demod_shr << 1) & 0x7FFFFFFF;
+  if (edge_zc != DEMOD_ZEROCR_POS) {
+    if (demod_filt[edge_zc-(GMSK_BITSAMPLING/2)] > 0) {
+      demod_shr |= demod_pos_level;
+    } else {
+      demod_shr |= demod_neg_level;
+    }
+    demod_shr >>= 1;
+    edge_zc += GMSK_BITSAMPLING/2;
+    if (edge_zc >= DEMOD_FILT_SIZE) edge_zc = DEMOD_FILT_SIZE-1;
+    if (demod_filt[edge_zc] > 0) {
+      demod_shr |= demod_pos_level;
+    } else {
+      demod_shr |= demod_neg_level;
+    }
+  }
+  demod_shr = bits;
 }
 
 
@@ -641,12 +681,14 @@ INTERRUPT_FUNC gmsk_samplestart_int(void) {
 // simplified, PLL-recover w/o filter
 
 INTERRUPT_FUNC gmsk_processbit_int(void) {
+  S32 clockcorr;
+  int cnt, flanke;
   U32 pattern;
   // disable interrupt handling (it is enabled by timer interrupt if a bit-sampling finished)
   AVR32_ADC.idr	= HFDATA_INT_MASK;
 
-  // Filter FIR on demod_adcin -> Signal to demod_filt (first sample is from previous bit)
-  demod_filter_to(&demod_filt[2]);
+  // Filter FIR on demod_adcin -> Signal to demod_filt (first samples are from previous bit)
+  demod_filter_to(&demod_filt[GMSK_BITSAMPLING]);
 
   // free space for new ADC data:
   dsp16_vect_move(demod_adcin, &demod_adcin[GMSK_BITSAMPLING], DEMOD_ADC_SIZE-GMSK_BITSAMPLING);
@@ -656,36 +698,38 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
   demod_shr >>= 1;
   if (demod_filt[DEMOD_BITMAX_POS] > 0) {	// hard desision decoding
     demod_shr |= demod_pos_level;	// pos. Auslenkung -> i.d.R. "0" empfangen
-    //gpio0_set(DEBUG_PIN2);
   } else {	// low_level
     demod_shr |= demod_neg_level;	// neg. Auslenkung -> i.d.R. "1" empfangen
-    //gpio0_clr(DEBUG_PIN2);
   }
   // check, if bit is not the same like the bit before
   // if true a edge must be between these bits
   demod_korrcnt++;
-  if ( ((demod_shr&0xC0000000)==0x80000000) || ((demod_shr&0xC0000000)==0x40000000) ) {
-    S32 clockcorr;
-    int cnt, flanke = 0;
-    //if ((demod_shr&0xC0000000)==0x40000000)
-    // detect phase of zero-crossings (ZC)
-    for (cnt = DEMOD_ZEROCR_POS; cnt < DEMOD_FILT_SIZE; cnt++) {
-      if ((demod_filt[cnt-1]&0x8000) != (demod_filt[cnt]&0x8000)) {
+  //if ( ((demod_shr&0xC0000000)==0x80000000) || ((demod_shr&0xC0000000)==0x40000000) ) {
+  // detect phase of zero-crossings (ZC)
+  clockcorr = 0;
+  for (cnt = DEMOD_ZEROCR_POS; cnt < DEMOD_FILT_SIZE; cnt++) {
+    if ((demod_filt[cnt-1]&0x8000) != (demod_filt[cnt]&0x8000)) {
+      // find the "largest" edge (in noisy signals):
+      S32 zc_slope = abs(demod_filt[cnt] - demod_filt[cnt-1]);
+      if (zc_slope > clockcorr) {
 	flanke = cnt;		// position of an edge found
-	continue;
-      } // fi sign-compare
-    } // rof
+	clockcorr = zc_slope;
+      }
+    } // fi sign-compare
+  } // rof
+  if (clockcorr > 0) {	// a edge is in the new bit-samples
     // a ZC should occur on position 1 - than no correction is necssary
     clockcorr = ((flanke-DEMOD_ZEROCR_POS)*GMSK_RCDEFAULT) +
 	        gmsk_calc_zerocorr(demod_filt[flanke-1], demod_filt[flanke]);
     // Position 1 is 2 samples before the bitmax-sample, see defines above
-    demod_clockrecover(clockcorr, demod_korrcnt);
+    demod_clockrecover(clockcorr);
     demod_korrcnt  = 0;
     demod_lastkorr = clockcorr;
-  } // fi bit changed
+    demod_correct_bits(clockcorr/GMSK_RCDEFAULT + DEMOD_ZEROCR_POS);
+  } // fi edge detected
 
-  demod_filt[0] = demod_filt[DEMOD_FILT_SIZE-2];	// keep last samples
-  demod_filt[1] = demod_filt[DEMOD_FILT_SIZE-1];
+  // keep samples of current bit:
+  dsp16_vect_copy(demod_filt, &demod_filt[DEMOD_FILT_SIZE/2], DEMOD_FILT_SIZE/2);
 
   // saving of SHR if a pointer define:
   demod_rxbitcnt++;
@@ -818,6 +862,10 @@ void gmsk_demodulator_start(void) {
   gmsk_stop_rxtimer();
   demod_bitphasecnt = 0;
   gmsk_demod_unlock();
+#if (DVRX_TIMER_CH==IDLE_TIMER_CH)
+  GMSK_RX_TIMER.cmr = TIMER_CMR_VALUE;
+  INTC_register_interrupt(gmsk_samplestart_int, GMSK_RX_TIMER_IRQ, DV_DEMODIN_INTPRIO);
+#endif
   GMSK_RX_TIMER.sr;
   GMSK_RX_TIMER.ier = AVR32_TC_CPCS_MASK;
   GMSK_RX_TIMER.rc  = GMSK_RCDEFAULT;	// SPS-Rate: Periode für ADC
@@ -861,25 +909,6 @@ __inline int gmsk_channel_idle(void) {
 /*! \name GMSK Init/Exit API Functions
  */
 //! @{
-
-#define TIMER_CMR_VALUE	( AVR32_TC_NONE << AVR32_TC_BSWTRG_OFFSET | \
-    AVR32_TC_NONE << AVR32_TC_BEEVT_OFFSET | \
-    AVR32_TC_NONE << AVR32_TC_BCPC_OFFSET | \
-    AVR32_TC_NONE << AVR32_TC_BCPB_OFFSET | \
-    AVR32_TC_NONE << AVR32_TC_ASWTRG_OFFSET | \
-    AVR32_TC_NONE << AVR32_TC_AEEVT_OFFSET | \
-    AVR32_TC_NONE << AVR32_TC_ACPC_OFFSET | \
-    AVR32_TC_NONE << AVR32_TC_ACPA_OFFSET | \
-    1 << AVR32_TC_WAVE_OFFSET | \
-    AVR32_TC_WAVSEL_UP_AUTO << AVR32_TC_WAVSEL_OFFSET | \
-    FALSE << AVR32_TC_ENETRG_OFFSET | \
-    AVR32_TC_EEVT_TIOB_INPUT << AVR32_TC_EEVT_OFFSET | \
-    AVR32_TC_EEVTEDG_NO_EDGE << AVR32_TC_EEVTEDG_OFFSET | \
-    FALSE << AVR32_TC_CPCDIS_OFFSET | \
-    FALSE << AVR32_TC_CPCSTOP_OFFSET | \
-    AVR32_TC_BURST_NOT_GATED << AVR32_TC_BURST_OFFSET | \
-    0 << AVR32_TC_CLKI_OFFSET | \
-    AVR32_TC_TCCLKS_TIMER_CLOCK2 << AVR32_TC_TCCLKS_OFFSET )
 
 
 void gmsk_init(void) {

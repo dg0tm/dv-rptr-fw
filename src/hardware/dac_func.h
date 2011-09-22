@@ -22,6 +22,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this package. If not, see <http://www.gnu.org/licenses/>.
  *
+ * 2011-09-22 JA  Added power-down feature
  */
 
 
@@ -41,11 +42,6 @@ void	dac_waitidle(void);
 // Der Wert 'value' wird als 16bit vorzeichenbehaftet angenommen, größere Werte
 // führen zur Sättigung. Je nach DAC-Auflösung werden die LSBs verworfen.
 void	dac_modulate(int value);
-
-#define DAC_FULL	32750		// full-modulation (a litte bit reserve 4 filters)
-// DAC_FULL stellt den Maximalwert dar, den ein Symbol vor Filterung annehmen sollte.
-// Wird mit verstärkenden Filtern gearbeitet - so sollte der Wert reduziert werden um
-// Verzerrungen zu vermeiden
 
 
 // dac_set_active_ch()
@@ -69,6 +65,7 @@ void	dac_set_active_ch(char no);	// Auswahl des Kanals bei dem DualDAC für dac_
 
 char	dac_get_active_ch(void);
 
+void	dac_power_ctrl(char powermode);	// if "0" the current channel switched to pwr down
 
 // Low-Level:
 
