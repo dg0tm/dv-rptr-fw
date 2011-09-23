@@ -15,7 +15,7 @@
 </extensions>
 </storageModule>
 <storageModule moduleId="cdtBuildSystem" version="4.0.0">
-<configuration artifactName="DV-RPTR" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.debug,org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe" cleanCommand="rm -rf" description="AVR32 Standalone debug configuration" id="avr32.managedbuild.config.gnu.exe.debug.1620060750" name="Debug" parent="avr32.managedbuild.config.gnu.exe.debug">
+<configuration artifactName="DV-RPTR" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.debug,org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe" cleanCommand="rm -rf" description="AVR32 Standalone debug configuration" id="avr32.managedbuild.config.gnu.exe.debug.1620060750" name="Debug" parent="avr32.managedbuild.config.gnu.exe.debug" postbuildStep="avr32-objcopy -O binary ${ProjName}.elf  ${ProjName}.bin">
 <folderInfo id="avr32.managedbuild.config.gnu.exe.debug.1620060750." name="/" resourcePath="">
 <toolChain id="avr32.managedbuild.toolchain.gnu.exe.debug.696810915" name="32-bit AVR/GNU C/C++ Toolchain" superClass="avr32.managedbuild.toolchain.gnu.exe.debug">
 <targetPlatform id="avr32.managedbuild.target.gnu.platform.exe.debug.1434804691" name="%PlatformName.Dbg" superClass="avr32.managedbuild.target.gnu.platform.exe.debug"/>
@@ -53,6 +53,8 @@
 <listOptionValue builtIn="false" value="HW10"/>
 <listOptionValue builtIn="false" value="DEBUG"/>
 </option>
+<option id="avr32.c.compiler.option.mforce-double-align.704814862" name="Force double-word alignment" superClass="avr32.c.compiler.option.mforce-double-align" value="false" valueType="boolean"/>
+<option id="avr32.c.compiler.option.ffast-math.1557717689" name="Enable fast math" superClass="avr32.c.compiler.option.ffast-math" value="false" valueType="boolean"/>
 <inputType id="avr32.managedbuild.tool.gnu.c.compiler.input.1077993862" superClass="avr32.managedbuild.tool.gnu.c.compiler.input"/>
 </tool>
 <tool id="avr32.managedbuild.tool.gnu.c.linker.exe.debug.1571554284" name="32-bit AVR/GNU C Linker" superClass="avr32.managedbuild.tool.gnu.c.linker.exe.debug">
@@ -66,6 +68,7 @@
 <listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/LIBS/DSPLIB/AT32UCR1/GCC"/>
 </option>
 <option id="gnu.c.link.option.nostart.1138229560" name="Do not use standard start files (-nostartfiles)" superClass="gnu.c.link.option.nostart" value="true" valueType="boolean"/>
+<option id="gnu.c.link.option.ldflags.1742499197" superClass="gnu.c.link.option.ldflags" value="-march=ucr1 -Wl,--gc-sections -Wl,-e,_trampoline" valueType="string"/>
 <inputType id="cdt.managedbuild.tool.gnu.c.linker.input.51125985" superClass="cdt.managedbuild.tool.gnu.c.linker.input">
 <additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
 <additionalInput kind="additionalinput" paths="$(LIBS)"/>
@@ -590,8 +593,8 @@
 <storageModule moduleId="org.eclipse.cdt.core.language.mapping"/>
 <storageModule moduleId="org.eclipse.cdt.internal.ui.text.commentOwnerProjectMappings"/>
 </cconfiguration>
-<cconfiguration id="avr32.managedbuild.config.gnu.exe.release.2060043553">
-<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="avr32.managedbuild.config.gnu.exe.release.2060043553" moduleId="org.eclipse.cdt.core.settings" name="Release">
+<cconfiguration id="avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911">
+<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911" moduleId="org.eclipse.cdt.core.settings" name="Release">
 <externalSettings/>
 <extensions>
 <extension id="org.eclipse.cdt.managedbuilder.core.ManagedBuildManager" point="org.eclipse.cdt.core.ScannerInfoProvider"/>
@@ -602,48 +605,89 @@
 </extensions>
 </storageModule>
 <storageModule moduleId="cdtBuildSystem" version="4.0.0">
-<configuration artifactName="DV-RPTR" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.release,org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe" cleanCommand="rm -rf" description="AVR32 Standalone release configuration" id="avr32.managedbuild.config.gnu.exe.release.2060043553" name="Release" parent="avr32.managedbuild.config.gnu.exe.release">
-<folderInfo id="avr32.managedbuild.config.gnu.exe.release.2060043553." name="/" resourcePath="">
-<toolChain id="avr32.managedbuild.toolchain.gnu.exe.release.245471262" name="32-bit AVR/GNU C/C++ Toolchain" superClass="avr32.managedbuild.toolchain.gnu.exe.release">
-<targetPlatform id="avr32.managedbuild.target.gnu.platform.exe.release.261005823" name="%PlatformName.Dbg" superClass="avr32.managedbuild.target.gnu.platform.exe.release"/>
-<builder buildPath="${workspace_loc:/DV-RPTR/Release}" id="avr32.managedbuild.target.gnu.builder.exe.release.606496898" keepEnvironmentInBuildfile="false" name="CDT Internal Builder" superClass="avr32.managedbuild.target.gnu.builder.exe.release"/>
-<tool id="avr32.managedbuild.tool.gnu.archiver.exe.release.1400887538" name="32-bit AVR/GNU Archiver" superClass="avr32.managedbuild.tool.gnu.archiver.exe.release"/>
-<tool id="avr32.managedbuild.tool.gnu.cpp.compiler.exe.release.1562049641" name="32-bit AVR/GNU C++ Compiler" superClass="avr32.managedbuild.tool.gnu.cpp.compiler.exe.release">
-<option id="gnu.cpp.compiler.option.optimization.level.1587854354" name="Optimization Level" superClass="gnu.cpp.compiler.option.optimization.level" value="gnu.cpp.compiler.optimization.level.most" valueType="enumerated"/>
-<option id="gnu.cpp.compiler.option.debugging.level.663106385" name="Debug Level" superClass="gnu.cpp.compiler.option.debugging.level" value="gnu.cpp.compiler.debugging.level.none" valueType="enumerated"/>
-<option defaultValue="gnu.c.optimization.level.most" id="avr32.cpp.compiler.option.optimization.level.release.278817399" name="Optimization Level" superClass="avr32.cpp.compiler.option.optimization.level.release" valueType="enumerated"/>
-<option id="avr32.cpp.compiler.option.mcu.1566509167" name="Microcontroller Unit" superClass="avr32.cpp.compiler.option.mcu" value="-mpart=uc3b0256" valueType="string"/>
+<configuration artifactName="DV-RPTR" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.debug,org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe" cleanCommand="rm -rf" description="Optimized Version w/o debugging" id="avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911" name="Release" parent="avr32.managedbuild.config.gnu.exe.debug" postannouncebuildStep="Build Firmware" postbuildStep="&quot;${ProjDirPath}/makedvfw.bat&quot; ${ProjName}.elf">
+<folderInfo id="avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911." name="/" resourcePath="">
+<toolChain id="avr32.managedbuild.toolchain.gnu.exe.debug.435269593" name="32-bit AVR/GNU C/C++ Toolchain" superClass="avr32.managedbuild.toolchain.gnu.exe.debug">
+<targetPlatform id="avr32.managedbuild.target.gnu.platform.exe.debug.1261114217" name="%PlatformName.Dbg" superClass="avr32.managedbuild.target.gnu.platform.exe.debug"/>
+<builder buildPath="${workspace_loc:/DV-RPTR/Debug}" id="avr32.managedbuild.target.gnu.builder.exe.debug.1241175394" keepEnvironmentInBuildfile="false" name="CDT Internal Builder" superClass="avr32.managedbuild.target.gnu.builder.exe.debug"/>
+<tool id="avr32.managedbuild.tool.gnu.archiver.exe.debug.754769342" name="32-bit AVR/GNU Archiver" superClass="avr32.managedbuild.tool.gnu.archiver.exe.debug"/>
+<tool id="avr32.managedbuild.tool.gnu.cpp.compiler.exe.debug.1198105227" name="32-bit AVR/GNU C++ Compiler" superClass="avr32.managedbuild.tool.gnu.cpp.compiler.exe.debug">
+<option id="gnu.cpp.compiler.option.optimization.level.561110517" name="Optimization Level" superClass="gnu.cpp.compiler.option.optimization.level" value="gnu.cpp.compiler.optimization.level.none" valueType="enumerated"/>
+<option id="gnu.cpp.compiler.option.debugging.level.1247929255" name="Debug Level" superClass="gnu.cpp.compiler.option.debugging.level" value="gnu.cpp.compiler.debugging.level.max" valueType="enumerated"/>
+<option id="avr32.cpp.compiler.option.mcu.768954011" name="Microcontroller Unit" superClass="avr32.cpp.compiler.option.mcu" value="-mpart=uc3b0256" valueType="string"/>
+<option id="avr32.cpp.compiler.option.flashvault.2110398683" name="Enable FlashVault support" superClass="avr32.cpp.compiler.option.flashvault" value="false" valueType="boolean"/>
 </tool>
-<tool id="avr32.managedbuild.tool.gnu.c.compiler.exe.release.280234024" name="32-bit AVR/GNU C Compiler" superClass="avr32.managedbuild.tool.gnu.c.compiler.exe.release">
-<option defaultValue="gnu.c.optimization.level.most" id="avr32.c.compiler.option.optimization.level.release.1097181240" name="Optimization Level" superClass="avr32.c.compiler.option.optimization.level.release" valueType="enumerated"/>
-<option id="gnu.c.compiler.option.debugging.level.654965335" name="Debug Level" superClass="gnu.c.compiler.option.debugging.level" value="gnu.c.debugging.level.none" valueType="enumerated"/>
-<option id="avr32.c.compiler.option.mcu.740600327" name="Microcontroller Unit" superClass="avr32.c.compiler.option.mcu" value="-mpart=uc3b0256" valueType="string"/>
-<inputType id="avr32.managedbuild.tool.gnu.c.compiler.input.1766861665" superClass="avr32.managedbuild.tool.gnu.c.compiler.input"/>
+<tool id="avr32.managedbuild.tool.gnu.c.compiler.exe.debug.604639064" name="32-bit AVR/GNU C Compiler" superClass="avr32.managedbuild.tool.gnu.c.compiler.exe.debug">
+<option defaultValue="gnu.c.optimization.level.none" id="gnu.c.compiler.option.optimization.level.2074359236" name="Optimization Level" superClass="gnu.c.compiler.option.optimization.level" value="gnu.c.optimization.level.most" valueType="enumerated"/>
+<option id="gnu.c.compiler.option.debugging.level.582747134" name="Debug Level" superClass="gnu.c.compiler.option.debugging.level" value="gnu.c.debugging.level.none" valueType="enumerated"/>
+<option id="avr32.c.compiler.option.mcu.262155595" name="Microcontroller Unit" superClass="avr32.c.compiler.option.mcu" value="-mpart=uc3b0256" valueType="string"/>
+<option id="gnu.c.compiler.option.include.paths.698016314" name="Include paths (-I)" superClass="gnu.c.compiler.option.include.paths" valueType="includePath">
+<listOptionValue builtIn="false" value="../src"/>
+<listOptionValue builtIn="false" value="../src/usb"/>
+<listOptionValue builtIn="false" value="../src/common"/>
+<listOptionValue builtIn="false" value="../src/hardware"/>
+<listOptionValue builtIn="false" value="../src/opendv"/>
+<listOptionValue builtIn="false" value="../src/FRAMEWORK"/>
+<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/INTC"/>
+<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB/ENUM/DEVICE"/>
+<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB/ENUM/HOST"/>
+<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB/ENUM"/>
+<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB"/>
+<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS"/>
+<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/PREPROCESSOR"/>
+<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/LIBS/DSPLIB/INCLUDE"/>
+</option>
+<option id="avr32.c.compiler.option.flashvault.2146229293" name="Enable FlashVault support" superClass="avr32.c.compiler.option.flashvault" value="false" valueType="boolean"/>
+<option id="gnu.c.compiler.option.preprocessor.def.symbols.1944347745" name="Defined symbols (-D)" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols">
+<listOptionValue builtIn="false" value="DVRPTR"/>
+<listOptionValue builtIn="false" value="HW10"/>
+</option>
+<option id="avr32.c.compiler.option.ffast-math.309351873" name="Enable fast math" superClass="avr32.c.compiler.option.ffast-math" value="true" valueType="boolean"/>
+<option id="avr32.c.compiler.option.mforce-double-align.88788974" name="Force double-word alignment" superClass="avr32.c.compiler.option.mforce-double-align" value="true" valueType="boolean"/>
+<inputType id="avr32.managedbuild.tool.gnu.c.compiler.input.1826306680" superClass="avr32.managedbuild.tool.gnu.c.compiler.input"/>
 </tool>
-<tool id="avr32.managedbuild.tool.gnu.c.linker.exe.release.18828409" name="32-bit AVR/GNU C Linker" superClass="avr32.managedbuild.tool.gnu.c.linker.exe.release">
-<option id="avr32.c.linker.option.mcu.668106818" name="Microcontroller Unit" superClass="avr32.c.linker.option.mcu" value="-mpart=uc3b0256" valueType="string"/>
-<inputType id="cdt.managedbuild.tool.gnu.c.linker.input.1391213910" superClass="cdt.managedbuild.tool.gnu.c.linker.input">
+<tool id="avr32.managedbuild.tool.gnu.c.linker.exe.debug.536360155" name="32-bit AVR/GNU C Linker" superClass="avr32.managedbuild.tool.gnu.c.linker.exe.debug">
+<option id="avr32.c.linker.option.mcu.2077828435" name="Microcontroller Unit" superClass="avr32.c.linker.option.mcu" value="-mpart=uc3b0256" valueType="string"/>
+<option id="gnu.c.link.option.libs.578912770" name="Libraries (-l)" superClass="gnu.c.link.option.libs" valueType="libs">
+<listOptionValue builtIn="false" value="m"/>
+<listOptionValue builtIn="false" value="dsp-at32ucr1-dspaccandsize_opt"/>
+</option>
+<option id="gnu.c.link.option.paths.915802500" name="Library search path (-L)" superClass="gnu.c.link.option.paths" valueType="libPaths">
+<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/LIBS/DSPLIB"/>
+<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/LIBS/DSPLIB/AT32UCR1/GCC"/>
+</option>
+<option id="gnu.c.link.option.nostart.1470504227" name="Do not use standard start files (-nostartfiles)" superClass="gnu.c.link.option.nostart" value="true" valueType="boolean"/>
+<option id="avr32.c.linker.option.rodata-writable.1916537927" name="Put read-only data in writable data section" superClass="avr32.c.linker.option.rodata-writable" value="false" valueType="boolean"/>
+<option id="avr32.c.linker.option.ffast-math.1861390747" name="Enable fast math" superClass="avr32.c.linker.option.ffast-math" value="true" valueType="boolean"/>
+<option id="gnu.c.link.option.ldflags.1768782252" superClass="gnu.c.link.option.ldflags" value="-march=ucr1 -Wl,--gc-sections -Wl,-e,_trampoline" valueType="string"/>
+<inputType id="cdt.managedbuild.tool.gnu.c.linker.input.1379933530" superClass="cdt.managedbuild.tool.gnu.c.linker.input">
 <additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
 <additionalInput kind="additionalinput" paths="$(LIBS)"/>
 </inputType>
 </tool>
-<tool id="avr32.managedbuild.tool.gnu.cpp.linker.exe.release.54530533" name="32-bit AVR/GNU C++ Linker" superClass="avr32.managedbuild.tool.gnu.cpp.linker.exe.release">
-<option id="avr32.cpp.linker.option.mcu.24005207" name="Microcontroller Unit" superClass="avr32.cpp.linker.option.mcu" value="-mpart=uc3b0256" valueType="string"/>
+<tool id="avr32.managedbuild.tool.gnu.cpp.linker.exe.debug.153333438" name="32-bit AVR/GNU C++ Linker" superClass="avr32.managedbuild.tool.gnu.cpp.linker.exe.debug">
+<option id="avr32.cpp.linker.option.mcu.1095885569" name="Microcontroller Unit" superClass="avr32.cpp.linker.option.mcu" value="-mpart=uc3b0256" valueType="string"/>
 </tool>
-<tool id="avr32.managedbuild.tool.gnu.assembler.exe.release.1621958400" name="32-bit AVR/GNU Assembler" superClass="avr32.managedbuild.tool.gnu.assembler.exe.release">
-<option id="avr32.both.asm.option.debugging.level.137778742" name="Debug Level" superClass="avr32.both.asm.option.debugging.level" value="avr32.both.asm.debugging.level.none" valueType="enumerated"/>
-<option id="avr32.both.asm.option.mcu.1348722482" name="Microcontroller Unit" superClass="avr32.both.asm.option.mcu" value="-mpart=uc3b0256" valueType="string"/>
+<tool id="avr32.managedbuild.tool.gnu.assembler.exe.debug.825309242" name="32-bit AVR/GNU Assembler" superClass="avr32.managedbuild.tool.gnu.assembler.exe.debug">
+<option id="avr32.both.asm.option.debugging.level.416498041" name="Debug Level" superClass="avr32.both.asm.option.debugging.level" value="avr32.both.asm.debugging.level.max" valueType="enumerated"/>
+<option id="avr32.both.asm.option.mcu.394905386" name="Microcontroller Unit" superClass="avr32.both.asm.option.mcu" value="-mpart=uc3b0256" valueType="string"/>
+<option id="gnu.both.asm.option.include.paths.1792547296" name="Include paths (-I)" superClass="gnu.both.asm.option.include.paths"/>
 </tool>
-<tool id="avr32.managedbuild.tool.gnu.preprocessor.exe.release.880412927" name="32-bit AVR/GNU Preprocessing Assembler" superClass="avr32.managedbuild.tool.gnu.preprocessor.exe.release">
-<option id="avr32.both.preprocessor.option.debugging.level.61155134" name="Debug Level" superClass="avr32.both.preprocessor.option.debugging.level" value="avr32.both.preprocessor.debugging.level.none" valueType="enumerated"/>
-<option id="avr32.both.preprocessor.option.mcu.505559827" name="Microcontroller Unit" superClass="avr32.both.preprocessor.option.mcu" value="-mpart=uc3b0256" valueType="string"/>
-<inputType id="avr32.managedbuild.tool.gnu.preprocessor.input.1351886612" superClass="avr32.managedbuild.tool.gnu.preprocessor.input"/>
+<tool id="avr32.managedbuild.tool.gnu.preprocessor.exe.debug.44675458" name="32-bit AVR/GNU Preprocessing Assembler" superClass="avr32.managedbuild.tool.gnu.preprocessor.exe.debug">
+<option id="avr32.both.preprocessor.option.debugging.level.251446168" name="Debug Level" superClass="avr32.both.preprocessor.option.debugging.level" value="avr32.both.preprocessor.debugging.level.max" valueType="enumerated"/>
+<option id="avr32.both.preprocessor.option.mcu.1682235707" name="Microcontroller Unit" superClass="avr32.both.preprocessor.option.mcu" value="-mpart=uc3b0256" valueType="string"/>
+<option id="avr32.both.preprocessor.option.paths.948298023" name="Include paths (-I)" superClass="avr32.both.preprocessor.option.paths" valueType="includePath">
+<listOptionValue builtIn="false" value="../src"/>
+<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS"/>
+<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/PREPROCESSOR"/>
+</option>
+<inputType id="avr32.managedbuild.tool.gnu.preprocessor.input.2106563294" superClass="avr32.managedbuild.tool.gnu.preprocessor.input"/>
 </tool>
 </toolChain>
 </folderInfo>
 <sourceEntries>
-<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="src"/>
 <entry excluding="src" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
+<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="src"/>
 </sourceEntries>
 </configuration>
 </storageModule>
