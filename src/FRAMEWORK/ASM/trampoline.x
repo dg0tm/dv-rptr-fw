@@ -61,6 +61,7 @@
   .global _trampoline
   .type _trampoline, @function
 _trampoline:
+
   // Jump to program start.
   rjmp    program_start
 

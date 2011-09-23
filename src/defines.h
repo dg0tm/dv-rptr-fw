@@ -27,7 +27,7 @@
 #ifndef DEFINES_H_
 #define DEFINES_H_
 
-#define FIRMWAREVERSION		0x0200
+#define FIRMWAREVERSION		0x0201
 
 // Version Vxx.yy (last digit is char ' ', a, b...)
 
