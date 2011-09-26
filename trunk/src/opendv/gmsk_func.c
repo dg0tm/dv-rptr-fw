@@ -172,6 +172,8 @@ U32 *gmsk_dataptr, *gmsk_nextdataptr;		// Zeiger auf aktuelles Datum
 dsp16_t dac_one_val  = DAC_MIDDLE + GMSK_DEFAULT_BW;
 dsp16_t dac_zero_val = DAC_MIDDLE - GMSK_DEFAULT_BW;
 
+U32 gmsk_txmod_clk = GMSK_MOD_PHASE;		// Sendetakt variabel für Tests
+
 tgmsk_reloadfunc gmsk_reloadhandler;		// Functionvar
 
 
@@ -204,7 +206,7 @@ INTERRUPT_FUNC gmsk_modulator_int(void) {
   GMSK_TX_TIMER.sr;
   GMSK_TX_TIMER.rc = GMSK_MOD_DEFAULT + gmsk_txpll_accu.u16[0];
   gmsk_txpll_accu.u16[0] = 0;	// Clear Alternate-Bit
-  gmsk_txpll_accu.u32 += GMSK_MOD_PHASE;
+  gmsk_txpll_accu.u32 += gmsk_txmod_clk;	//GMSK_MOD_PHASE;
   if (++gmsk_overcnt >= GMSK_OVERSAMPLING) {
     dsp16_vect_copy(dac_out_buffer, modulator_out, GMSK_OVERSAMPLING);
     AVR32_SPI.ier = AVR32_SPI_IER_TXEMPTY_MASK;
@@ -846,6 +848,11 @@ __inline int gmsk_nextpacket(void) {
 }
 
 
+void gmsk_adjusttxperiod(signed int correction) {
+  gmsk_txmod_clk = GMSK_MOD_PHASE + __builtin_sats(correction, 0, 17);
+}
+
+
 //! @}
 
 
@@ -933,6 +940,7 @@ void gmsk_init(void) {
   //dcd_init();
 
   // *** Modulator Global Vars ***
+  gmsk_txmod_clk = GMSK_MOD_PHASE;
   gmsk_bitcnt = gmsk_bitlen = gmsk_overcnt = 0;
 //  gmsk_nextdataptr = NULL;
   gmsk_nextbitlen  = 0;

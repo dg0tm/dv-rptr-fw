@@ -94,5 +94,7 @@ void	gmsk_set_receivebuf(unsigned long *rxbuf, int bit_len);
 
 int	gmsk_channel_idle(void);
 
+void	gmsk_adjusttxperiod(signed int correction);
+
 #endif // GMSK_FUNC_H_
 

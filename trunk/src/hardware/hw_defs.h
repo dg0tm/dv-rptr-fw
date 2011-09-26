@@ -105,17 +105,39 @@
 				(1<<AVR32_PIN_PA24)|(1<<AVR32_PIN_PA25)|(1<<AVR32_PIN_PA28)| \
 				(1<<AVR32_PIN_PA29)
 // define GPIO Outputs
+#ifdef DEBUG
 #define GPIO0_ODER		(1<<LED_GREEN_PIN)|(1<<LED_RED_PIN)|(1<<PTT_OUT_PIN)|	\
 	                        (1<<DACLD_PIN)|(1<<USBVBOF_PIN)|	\
 	                        (1<<EXP_IO21_PIN)|(1<<EXP_IO23_PIN)
+#else
+#define GPIO0_ODER		(1<<LED_GREEN_PIN)|(1<<LED_RED_PIN)|(1<<PTT_OUT_PIN)|	\
+	                        (1<<DACLD_PIN)|(1<<USBVBOF_PIN)
+#endif
+
 
 #define GPIO0_OVRINIT		(1<<LED_GREEN_PIN)|(1<<DACLD_PIN)|(1<<PTT_OUT_PIN)
 
+
+//#define TC_A1_OUT
+
+#ifdef TC_A1_OUT
+#define GPIO0_PMR0		(1<<AVR32_TC_A1_0_0_PIN)
+#else
 #define GPIO0_PMR0		0
+#endif
 #define GPIO0_PMR1		0
+
+#ifdef TC_A1_OUT
+#define GPIO0_DISABLE_MASK	(1<<AVR32_TWI_SDA_0_0_PIN)|(1<<AVR32_TWI_SCL_0_0_PIN)|	\
+	                        (1<<AVR32_SPI_MOSI_0_0_PIN)|(1<<AVR32_SPI_SCK_0_0_PIN)|	\
+	                        (1<<AVR32_SPI_NPCS_0_0_PIN)|	\
+	                        (1<<AVR32_TC_A1_0_0_PIN)
+#else
 #define GPIO0_DISABLE_MASK	(1<<AVR32_TWI_SDA_0_0_PIN)|(1<<AVR32_TWI_SCL_0_0_PIN)|	\
 	                        (1<<AVR32_SPI_MOSI_0_0_PIN)|(1<<AVR32_SPI_SCK_0_0_PIN)|	\
 	                        (1<<AVR32_SPI_NPCS_0_0_PIN)
+#endif
+
 
 // Output-GPIO-Pins (PortB)
 #define WATCHDOG_PIN		(AVR32_PIN_PB00-32)

@@ -46,14 +46,18 @@
  * 2011-09-06 V0.10  gmsk: Additional Interrupt-Handler keeps critical Timer-based ADC-start, DAC-out
  * 		     with a minimum of jitter in the case of duplex operation
  * 2011-09-18 V0.12  various tests with demodulator.
- * 2011-92-22 V0.20  idle_timer feature, prevent TX, if not enabled. RX is swichable to.
+ * 2011-09-22 V0.20  idle_timer feature, prevent TX, if not enabled. RX is swichable to.
  * 		     disabling RX+TX if USB cable a disconnected
  * 		     if TX switched off, DAC and REF-DAC turned to power-down
+ * 2011-09-24 V0.30  add some bytes in header and voice-frame packets for future use.
+ * 		     special-function commands RESET + FORCE-BOOTLOADER added
+ * 2011-09-25 V0.30a Fixing header / voicedata bug (new offset)
  *
  *
  * ToDo:
  * - Transmitter-State enumeration for GET_STATUS
  * - PC watchdog
+ * - force-bootloader command
  * ~ first SYNC detect -> Message (early switch on Transceiver)
  * + enable / disable receiver (if disabled keep firmware alive by a idle-counter)
  * + enable / disable transmitter (logic only, return NAK on START / SYNC cmd if off)
@@ -73,6 +77,7 @@
 
 #include "gpio_func.h"		// GPIO-functions and macros (PTT, LEDs...)
 #include "int_func.h"		// idle_timer()
+#include "flash_fuses.h"	// to force BL
 
 #include "usb_func.h"
 
@@ -95,18 +100,23 @@ typedef struct PACKED_DATA {
 } tctrlpcdata;
 
 typedef struct PACKED_DATA {
-  tRS232pktHeader	head;
-  unsigned char		rxid;
-  unsigned char		biterrs;
-  tds_header		header;
+  tRS232pktHeader	head;		// 4 byte (ID, length and first payload = message-type)
+  unsigned char		rxid;		// ID of current transmission (alter it, when start a new one)
+  unsigned char		flags;		// control-flags
+  unsigned char		biterrs;	// no of bit-errors in a received header (not jet)
+  unsigned char		rsvd1;		// for future use
+  tds_header		header;		// header starts at offset +8!
+  unsigned char		rsvd2;		// for future use
   unsigned short	crc;
 } theadrpcdata;
 
 typedef struct PACKED_DATA {
-  tRS232pktHeader	head;		// 4byte
-  unsigned char		rxid;
+  tRS232pktHeader	head;		// 4 byte (ID, length and first payload = message-type)
+  unsigned char		rxid;		// ID of current transmission
   unsigned char		pktcount;
-  tds_voicedata		DVdata;
+  unsigned short	rssi;		// SQL-line value (averaged for every voice frame)
+  tds_voicedata		DVdata;		// DVdata starts at offset +8!
+  unsigned char		rsvd[2];	// for future use
   unsigned short	crc;
 } tvoicepcdata;
 
@@ -117,7 +127,8 @@ typedef enum {
   RPTR_GET_STATUS=0x10, RPTR_GET_VERSION, RPTR_GET_SERIAL, RPTR_GET_CONFIG,
   RPTR_SET_CONFIG, RPTR_RXPREAMBLE, RPTR_START, RPTR_HEADER,
   RPTR_RXSYNC, RPTR_DATA, RPTR_EOT, RPTR_RXLOST,
-  RPTR_MSG_RSVD1, RPTR_MSG_RSVD2, RPTR_MSG_RVSD3, RPTR_SET_TESTMDE
+  RPTR_MSG_RSVD1, RPTR_MSG_RSVD2, RPTR_MSG_RVSD3, // this message-types we can use for APCO P25
+  RPTR_SET_SPECIALFUNCT		// 0x1F is used for special commands (bootloader, testmode...)
 } tRPTRcmds;
 
 
@@ -132,6 +143,7 @@ typedef enum {
 #define STA_RECEIVING		0x01
 #define STA_TRANSMITTING	0x02
 #define STA_PCWATCHDOG		0x04
+
 
 // *** Globale Variablen ***
 
@@ -246,7 +258,6 @@ bool config_setup(const char *config_data, int len) {
 }
 
 
-
 void init_pcdata(void) {
   ctrldata.head.id  = FRAMESTARTID;
   ctrldata.head.len = swap16(sizeof(ctrldata)-5);
@@ -254,15 +265,82 @@ void init_pcdata(void) {
   headerdata.head.id  = FRAMESTARTID;
   headerdata.head.len = swap16(sizeof(headerdata)-5);
   headerdata.head.cmd = RPTR_HEADER;
+  headerdata.rsvd1    = 0x00;
+  headerdata.rsvd2    = 0x00;
   voicedata.head.id   = FRAMESTARTID;
   voicedata.head.len  = swap16(sizeof(voicedata)-5);
   voicedata.head.cmd  = RPTR_RXSYNC;
+  voicedata.rsvd[0]   = 0x00;
+  voicedata.rsvd[1]   = 0x00;
 }
 
 
 __inline void pc_send_byte(U8 data) {
   answer.head.len = 2;
   answer.data[PKT_PARAM_IDX] = data;
+}
+
+
+
+#define SFC_TURN_OFF_TESTMODE	0x00
+#define SFC_TURN_ON_TESTMODE	0x01
+
+#define SFC_CORRECT_TX_CLOCK	0x10
+
+#define SFC_RESET		0xF1
+#define SFC_FORCE_BOOTLOADER	0xF2
+
+
+// handle_special_func_cmd()
+// a subset of commands / functions (not often used) are accessed by main-command 0x1F
+// this function handles such calls from the PC.
+void handle_special_func_cmd(int len) {
+  S32 parameter;
+  if (len < 2) {
+    pc_send_byte(NAK);
+  } else switch (rxdatapacket.data[PKT_PARAM_IDX]) {
+  case SFC_TURN_OFF_TESTMODE:
+    RPTR_clear(RPTR_TX_TESTLOOP);
+    pc_send_byte(ACK);
+    break;
+  case SFC_TURN_ON_TESTMODE:
+    if (RPTR_is_set(RPTR_RECEIVING)) {
+      pc_send_byte(NAK);
+    } else {
+      RPTR_set(RPTR_TX_TESTLOOP);
+      rptr_transmit();			// Turn on Xmitter
+      pc_send_byte(ACK);
+    }
+    break;
+  case SFC_CORRECT_TX_CLOCK:
+    parameter = (rxdatapacket.data[PKT_PARAM_IDX+1]) | (rxdatapacket.data[PKT_PARAM_IDX+2]<<8) |
+      (rxdatapacket.data[PKT_PARAM_IDX+3]<<16) | (rxdatapacket.data[PKT_PARAM_IDX+4]<<24);
+    if ((len == 6) && (abs(parameter) < 0x1FFFF)) {
+      gmsk_adjusttxperiod(parameter);
+      pc_send_byte(ACK);
+    } else pc_send_byte(NAK);
+    break;
+  case SFC_FORCE_BOOTLOADER:
+  case SFC_RESET:
+    // to prevent unwanted calling - this commands need a parameter as a key:
+    // send the SERIAL-NUMBER (32bit) as unique identifier.
+    if ((len == 6) && (memcmp(&rxdatapacket.data[PKT_PARAM_IDX+1], (char *)SERIALNUMBER_ADDRESS, 4)==0))  {
+      if (rxdatapacket.data[PKT_PARAM_IDX]==SFC_FORCE_BOOTLOADER) {
+	SetForceISP();
+      } // fi bootloader
+      usb_exit();
+      // ToDo after Reset the USB-CDC is not working - but USB-DFU is ok.
+      rptr_exit_hardware();
+      exit_usb_hardware();
+      Disable_global_interrupt();
+      __asm__ __volatile__ ("rjmp _trampoline");	// jump direct to reset-vector (reset-section)
+    } else {
+      pc_send_byte(NAK);
+    }
+    break;
+  default:
+    pc_send_byte(NAK);
+  } // esle hctiws
 }
 
 
@@ -351,7 +429,7 @@ __inline void handle_pc_paket(int len) {
     else
       pc_send_byte(NAK);
     // keep 2 bytes for future use, keep layout identical to RX
-    rptr_init_header((tds_header *)&rxdatapacket.data[PKT_PARAM_IDX+2]);
+    rptr_init_header((tds_header *)&rxdatapacket.data[PKT_PARAM_IDX+4]);
     break;
   case RPTR_RXSYNC:		// start transmitting TXDelay-Preamble-Start-Header
     if (status_control & STA_TXENABLE_MASK) {
@@ -362,30 +440,17 @@ __inline void handle_pc_paket(int len) {
     break;
   case RPTR_DATA:		// transmit data (voice and slowdata or sync)
 #ifdef PLAIN_SLOWDATA		// scramble data (if was plain)
-    dstar_scramble_data((tds_voicedata *)&rxdatapacket.data[PKT_PARAM_IDX+2]);
+    dstar_scramble_data((tds_voicedata *)&rxdatapacket.data[PKT_PARAM_IDX+4]);
 #endif
     // keep 2 bytes for future use, keep layout identical to RX
-    rptr_addtxvoice((tds_voicedata *)&rxdatapacket.data[PKT_PARAM_IDX+2],
+    rptr_addtxvoice((tds_voicedata *)&rxdatapacket.data[PKT_PARAM_IDX+4],
       rxdatapacket.data[PKT_PARAM_IDX+1]);
     break;
   case RPTR_EOT:		// end transmission with EOT tail
     rptr_endtransmit();
     break;
-  case RPTR_SET_TESTMDE:
-    if (len==2) {
-      if (rxdatapacket.data[PKT_PARAM_IDX]&0x01) {
-	if (RPTR_is_set(RPTR_RECEIVING)) {
-	  pc_send_byte(NAK);
-	} else {
-	  RPTR_set(RPTR_TX_TESTLOOP);
-          rptr_transmit();		// Turn on Xmitter
-	  pc_send_byte(ACK);
-	}
-      } else {	// disable Test Mode
-	RPTR_clear(RPTR_TX_TESTLOOP);
-        pc_send_byte(ACK);
-      }
-    } else pc_send_byte(NAK);
+  case RPTR_SET_SPECIALFUNCT:
+    handle_special_func_cmd(len);
     break;
   default:
     pc_send_byte(NAK);
@@ -501,12 +566,12 @@ void handle_hfdata(void) {
         headerdata.rxid = ctrldata.rxid;
         voicedata.rxid  = ctrldata.rxid;
         transmission    = true;
-      }
+      } // fi no tx
       headerdata.biterrs = dstar_decodeheader(&headerdata.header, rptr_getheader());
-      if (headerdata.biterrs > 0x7F) headerdata.biterrs = 0x7F;
       // Checking header-crc:
+      headerdata.flags = 0x00;
       if (!dstar_checkheader(&headerdata.header)) {
-	headerdata.biterrs |= 0x80;	// if corrupt set Bit7 of biterrs
+	headerdata.flags |= 0x80;	// if corrupt set Bit7 of flags
       } // fi crc
       append_crc_ccitt((char *)&headerdata, sizeof(headerdata));
       data_transmit((char *)&headerdata, sizeof(headerdata));
@@ -529,11 +594,44 @@ void rptr_reset_inferface(void) {	// usb disconneced
 }
 
 
+#define TIMER_CMR_TEST_VALUE	( AVR32_TC_NONE << AVR32_TC_BSWTRG_OFFSET | \
+    AVR32_TC_NONE << AVR32_TC_BEEVT_OFFSET | \
+    AVR32_TC_NONE << AVR32_TC_BCPC_OFFSET | \
+    AVR32_TC_NONE << AVR32_TC_BCPB_OFFSET | \
+    AVR32_TC_NONE << AVR32_TC_ASWTRG_OFFSET | \
+    AVR32_TC_NONE << AVR32_TC_AEEVT_OFFSET | \
+    2 << AVR32_TC_ACPC_OFFSET | \
+    1 << AVR32_TC_ACPA_OFFSET | \
+    1 << AVR32_TC_WAVE_OFFSET | \
+    AVR32_TC_WAVSEL_UP_AUTO << AVR32_TC_WAVSEL_OFFSET | \
+    FALSE << AVR32_TC_ENETRG_OFFSET | \
+    AVR32_TC_EEVT_TIOB_INPUT << AVR32_TC_EEVT_OFFSET | \
+    AVR32_TC_EEVTEDG_NO_EDGE << AVR32_TC_EEVTEDG_OFFSET | \
+    FALSE << AVR32_TC_CPCDIS_OFFSET | \
+    FALSE << AVR32_TC_CPCSTOP_OFFSET | \
+    AVR32_TC_BURST_NOT_GATED << AVR32_TC_BURST_OFFSET | \
+    0 << AVR32_TC_CLKI_OFFSET | \
+    AVR32_TC_TCCLKS_TIMER_CLOCK2 << AVR32_TC_TCCLKS_OFFSET )
+
+
 int main(void) {
   Disable_global_interrupt();		// Disable all interrupts.
 
   // *** Initialization-Section ***
   init_hardware();
+
+#ifdef TC_A1_OUT
+  // Programming a 15MHz Signal on PA21 (Pin45 µC / Pin15 I/O connector)
+  AVR32_TC.channel[1].cmr = TIMER_CMR_TEST_VALUE;
+  AVR32_TC.channel[1].rc  = 2;
+  AVR32_TC.channel[1].ra  = 1;
+  AVR32_TC.channel[1].ccr = AVR32_TC_SWTRG_MASK | AVR32_TC_CLKEN_MASK;
+  while(1) {
+    SLEEP();				// do nothing, until some IRQ wake the CPU
+    watchdog();				// do external watchdog for STM706T
+  }
+#endif
+
   INTC_init_interrupts();		// Initialize interrupt vectors.
   rptr_init_hardware();
   usb_init();				// Enable VBUS-Check
@@ -553,7 +651,7 @@ int main(void) {
 
   //set_dac_power_mode(TWI_DAC_POWERUP);
   // Enable Reference-DAC MAX5820 (called, if TX swichted on)
-  rptr_receive();
+  //rptr_receive();
   // enable receiving (called, if receiver is switched on)
 
   while (TRUE) {			// *** Main-Loop ***
