@@ -68,7 +68,7 @@
 <listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/LIBS/DSPLIB/AT32UCR1/GCC"/>
 </option>
 <option id="gnu.c.link.option.nostart.1138229560" name="Do not use standard start files (-nostartfiles)" superClass="gnu.c.link.option.nostart" value="true" valueType="boolean"/>
-<option id="gnu.c.link.option.ldflags.1742499197" superClass="gnu.c.link.option.ldflags" value="-march=ucr1 -Wl,--gc-sections -Wl,-e,_trampoline" valueType="string"/>
+<option id="gnu.c.link.option.ldflags.1742499197" name="Linker flags" superClass="gnu.c.link.option.ldflags" value="-march=ucr1 -Wl,--gc-sections -Wl,-e,_trampoline" valueType="string"/>
 <inputType id="cdt.managedbuild.tool.gnu.c.linker.input.51125985" superClass="cdt.managedbuild.tool.gnu.c.linker.input">
 <additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
 <additionalInput kind="additionalinput" paths="$(LIBS)"/>
@@ -659,7 +659,7 @@
 <option id="gnu.c.link.option.nostart.1470504227" name="Do not use standard start files (-nostartfiles)" superClass="gnu.c.link.option.nostart" value="true" valueType="boolean"/>
 <option id="avr32.c.linker.option.rodata-writable.1916537927" name="Put read-only data in writable data section" superClass="avr32.c.linker.option.rodata-writable" value="false" valueType="boolean"/>
 <option id="avr32.c.linker.option.ffast-math.1861390747" name="Enable fast math" superClass="avr32.c.linker.option.ffast-math" value="true" valueType="boolean"/>
-<option id="gnu.c.link.option.ldflags.1768782252" superClass="gnu.c.link.option.ldflags" value="-march=ucr1 -Wl,--gc-sections -Wl,-e,_trampoline" valueType="string"/>
+<option id="gnu.c.link.option.ldflags.1768782252" name="Linker flags" superClass="gnu.c.link.option.ldflags" value="-march=ucr1 -Wl,--gc-sections -Wl,-e,_trampoline" valueType="string"/>
 <inputType id="cdt.managedbuild.tool.gnu.c.linker.input.1379933530" superClass="cdt.managedbuild.tool.gnu.c.linker.input">
 <additionalInput kind="additionalinputdependency" paths="$(USER_OBJS)"/>
 <additionalInput kind="additionalinput" paths="$(LIBS)"/>
