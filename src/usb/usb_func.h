@@ -49,6 +49,9 @@ void	cdc_flushrx(void);		// löscht den Inhalt des Rx
 
 int	cdc_copyblock(char *destbuffer, int len);
 
+unsigned char cdc_look_byte(int pos);
+unsigned short cdc_look_leword(int pos);
+
 void	cdc_enabletimeout(tusb_to_func Function, int ms);
 
 
