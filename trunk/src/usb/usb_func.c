@@ -25,6 +25,9 @@
  * Defines:
  * NOTIFY_USBHOST (DV-Modem only): Shows a Message on Display, if Host connects or discon.
  *
+ * Report:
+ * 2011-09-29	Fix a bug (wrong memcpy source @ bufferwrap) in cdc_copyblock().
+ *
  */
 
 //#define NOTIFY_USBHOST
@@ -236,15 +239,14 @@ void cdc_flushrx(void) {		// löscht den Inhalt des Rx
 
 
 int cdc_copyblock(char *destbuffer, int len) {
-  char *nxptr;
   int bytes_left;
   if (len <= CDC_RXBUFFERSIZE) {
     bytes_left = CDC_RXBUFFERSIZE-cdc_rdpos;
     if (len <= bytes_left) {	// Normalfall: kein Wrap
       memcpy(destbuffer, (const char *)&cdc_rxbuffer[cdc_rdpos], len);
     } else {
-      nxptr = memcpy(destbuffer, (const char *)&cdc_rxbuffer[cdc_rdpos], bytes_left);
-      memcpy(nxptr, (const char *)cdc_rxbuffer, len-bytes_left);
+      memcpy(destbuffer, (const char *)&cdc_rxbuffer[cdc_rdpos], bytes_left);
+      memcpy(destbuffer+bytes_left, (const char *)cdc_rxbuffer, len-bytes_left);
     }
     cdc_rdpos = (cdc_rdpos+len)%CDC_RXBUFFERSIZE;
     return len;
