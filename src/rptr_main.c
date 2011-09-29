@@ -52,6 +52,7 @@
  * 2011-09-24 V0.30  add some bytes in header and voice-frame packets for future use.
  * 		     special-function commands RESET + FORCE-BOOTLOADER added
  * 2011-09-25 V0.30a Fixing header / voicedata bug (new offset)
+ * 2011-09-29 V0.30b Fix a bug in usb_func() copy function
  *
  *
  * ToDo:
@@ -478,7 +479,7 @@ void handle_pcdata(void) {
   if (rxbytes) { // Irgendetwas empfangen
     if (rxbytes > sizeof(rxdatapacket)) rxbytes = sizeof(rxdatapacket);
     data_copyrx(rxdatapacket.data, rxbytes);
-    if (rxdatapacket.head.id == FRAMESTARTID) {
+    if (rxdatapacket.head.id == FRAMESTARTID) {	// packet begins with a valid frame
       U16 pkt_crc = 0;
       U16 framelen = swap16(rxdatapacket.head.len);
       if (status_control&STA_CRCENABLE_MASK) {	// check CRC only, if needed.
@@ -487,7 +488,12 @@ void handle_pcdata(void) {
       if ((framelen <= (rxbytes-5)) && (pkt_crc==0)) {
 	handle_pc_paket(framelen);
       } // fi correct / enough bytes received / crc ok
-    } // fi correct ID
+    } else {// fi correct ID
+      if (rxbytes > swap16(rxdatapacket.head.len)) {
+	rxbytes = -1;
+      }
+      rxbytes--;
+    }
   } // fi was da
 }
 

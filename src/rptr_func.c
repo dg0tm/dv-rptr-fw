@@ -26,6 +26,7 @@
  * 2011-01-27  JA  long Zero-Chain at end of transmission (until tx down, 64bits)
  * 2011-07-07  JA  re-struct slow-data-sending system. Only 6-byte block FILL data left here
  * 2011-09-05  JA  rptr_addtxvoice() nummeration logic bugfix
+ * 2011-09-29  JA  silence-frame with slow-data "fff" (means 'unnused' on Icom devices)
  */
 
 
@@ -63,7 +64,7 @@ ALIGNED_DATA static const unsigned long lastframe_dstar[2] = {
 ALIGNED_DATA static const unsigned long SilenceFrame[3] = {
   0x8e4fb8b0,	// ToDo Check!
   0xd55f2ba0,
-  0xe8ffffff
+  0xe81629f5
 };
 
 
