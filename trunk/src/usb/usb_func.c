@@ -60,7 +60,7 @@ extern Bool usb_connected;
 
 char	*cdc_txbuffer;
 U32	cdc_txbuffer_len;
-Bool	cdc_rxfifo_empty;
+//Bool	cdc_rxfifo_empty;
 
 int	cdc_lastbytes_rx;
 
@@ -123,7 +123,7 @@ static void usb_wait_for_connect(void) {
     // CDC Transmitbuffer Init:
     cdc_txbuffer_len = 0;
     cdc_txbuffer = NULL;
-    cdc_rxfifo_empty = TRUE;
+//    cdc_rxfifo_empty = TRUE;
   } // fi VBUS Pin high
 }
 
@@ -223,7 +223,7 @@ void cdc_receiving(void) {		// return: Anzahl empfangener Bytes im Fifo
 }
 
 
-__inline int cdc_received(void) {
+int cdc_received(void) {
   return(cdc_rxlen);
 }
 
@@ -233,8 +233,8 @@ void cdc_flushrx(void) {		// löscht den Inhalt des Rx
     Usb_reset_endpoint_fifo_access(RX_EP);
     Usb_ack_out_received_free(RX_EP);
   }
-  cdc_rdpos = cdc_wrpos = 0;
-  cdc_rxfifo_empty = TRUE;
+  cdc_rdpos = cdc_wrpos;
+//  cdc_rxfifo_empty = TRUE;
 }
 
 
@@ -251,6 +251,19 @@ int cdc_copyblock(char *destbuffer, int len) {
     cdc_rdpos = (cdc_rdpos+len)%CDC_RXBUFFERSIZE;
     return len;
   } else return 0;
+}
+
+
+unsigned char cdc_look_byte(int pos) {
+  return cdc_rxbuffer[(cdc_rdpos+pos) % CDC_RXBUFFERSIZE];
+}
+
+
+unsigned short cdc_look_leword(int pos) {
+  U16 result;
+  result = (cdc_rxbuffer[(cdc_rdpos+pos+1) % CDC_RXBUFFERSIZE] << 16) | \
+      cdc_rxbuffer[(cdc_rdpos+pos) % CDC_RXBUFFERSIZE];
+  return result;
 }
 
 

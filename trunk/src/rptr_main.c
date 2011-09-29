@@ -106,7 +106,7 @@ typedef struct PACKED_DATA {
   unsigned char		flags;		// control-flags
   unsigned char		biterrs;	// no of bit-errors in a received header (not jet)
   unsigned char		rsvd1;		// for future use
-  tds_header		header;		// header starts at offset +8!
+  tds_header		header;		// header starts at offset +8! 41 bytes long
   unsigned char		rsvd2;		// for future use
   unsigned short	crc;
 } theadrpcdata;
@@ -476,26 +476,34 @@ __inline void handle_pc_paket(int len) {
 void handle_pcdata(void) {
   int rxbytes;
   rxbytes = data_received();
-  if (rxbytes) { // Irgendetwas empfangen
-    if (rxbytes > sizeof(rxdatapacket)) rxbytes = sizeof(rxdatapacket);
-    data_copyrx(rxdatapacket.data, rxbytes);
-    if (rxdatapacket.head.id == FRAMESTARTID) {	// packet begins with a valid frame
+  if (rxbytes > 4) {		// a frame shout be have D0 length and crc
+    U16 length = 0;
+    if (cdc_look_byte(0) != FRAMESTARTID) {
+      data_flushrx();		// destroy garbage on COM/USB
+    } else {
+      length = cdc_look_leword(1);
+      if (length <= (sizeof(rxdatapacket)-5)) {
+	if (length <= (rxbytes-5)) {
+	  data_copyrx(rxdatapacket.data, length+5);
+	  data_flushrx();	// needed for buggy software!
+	} else					// packet still in receiving (on slow serial)
+	  length = 0;
+      } else {
+	data_flushrx();				// incorrect packet
+	length = 0;				// remove all data from buffer
+      } // fi incomplete
+    } // esle
+    if (length > 0) {
+//    if (rxdatapacket.head.id == FRAMESTARTID) { // packet begins with a valid frame / checked before
       U16 pkt_crc = 0;
-      U16 framelen = swap16(rxdatapacket.head.len);
       if (status_control&STA_CRCENABLE_MASK) {	// check CRC only, if needed.
-	pkt_crc = crc_ccitt(rxdatapacket.data, framelen+5);
+	pkt_crc = crc_ccitt(rxdatapacket.data, length+5);
       } // fi check CRC
-      if ((framelen <= (rxbytes-5)) && (pkt_crc==0)) {
-	handle_pc_paket(framelen);
-      } // fi correct / enough bytes received / crc ok
-    } else {// fi correct ID
-      if (rxbytes > swap16(rxdatapacket.head.len)) {
-	rxbytes = -1;
-      }
-      rxbytes--;
-    }
+      if (pkt_crc==0) handle_pc_paket(length);	// crc correct
+    } // fi payload
   } // fi was da
 }
+
 
 
 /* handle_hfdata() processes bit-flags from rptr_func
