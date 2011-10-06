@@ -172,7 +172,7 @@ U32 *gmsk_dataptr, *gmsk_nextdataptr;		// Zeiger auf aktuelles Datum
 dsp16_t dac_one_val  = DAC_MIDDLE + GMSK_DEFAULT_BW;
 dsp16_t dac_zero_val = DAC_MIDDLE - GMSK_DEFAULT_BW;
 
-U32 gmsk_txmod_clk = GMSK_MOD_PHASE;		// Sendetakt variabel für Tests
+U32 gmsk_txmod_clk = GMSK_MOD_PHASE;		// Sendetakt variabel fï¿½r Tests
 
 tgmsk_reloadfunc gmsk_reloadhandler;		// Functionvar
 
@@ -529,7 +529,7 @@ static void gmsk_locked_fkt(S32 correction) {
     // noch funktioniert es nicht wie gedacht...
     new_rxpll_period = gmsk_rxpll_clk.u32 + __builtin_sats(demod_korr, 0, 11);	// Fine
   } else {
-    new_rxpll_period = gmsk_rxpll_clk.u32 + __builtin_sats(demod_korr, 13, 11);	// ok für +/- 20Hz
+    new_rxpll_period = gmsk_rxpll_clk.u32 + __builtin_sats(demod_korr, 13, 11);	// ok fï¿½r +/- 20Hz
   }
   if (new_rxpll_period > GMSK_PLLMAXPERIOD)
     gmsk_rxpll_clk.u32 = GMSK_PLLMAXPERIOD;
@@ -710,18 +710,19 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
   demod_korrcnt++;
   // detect phase of zero-crossings (ZC)
   clockcorr = 0;
+  flanke = DEMOD_ZEROCR_POS;		// prevent warning
   if ( ((demod_shr&0xC0000000)==0x80000000) || ((demod_shr&0xC0000000)==0x40000000) ) {
-  for (cnt = DEMOD_ZEROCR_POS; cnt < DEMOD_FILT_SIZE; cnt++) {
-    if ((demod_filt[cnt-1]&0x8000) != (demod_filt[cnt]&0x8000)) {
-      // find the "largest" edge (in noisy signals):
-      S32 zc_slope = abs(demod_filt[cnt] - demod_filt[cnt-1]);
-      if (zc_slope > clockcorr) {
-	flanke = cnt;		// position of an edge found
-	clockcorr = zc_slope;
-//	continue;	// un-comment: first edge only.
-      }
-    } // fi sign-compare
-  } // rof
+    for (cnt = DEMOD_ZEROCR_POS; cnt < DEMOD_FILT_SIZE; cnt++) {
+      if ((demod_filt[cnt-1]&0x8000) != (demod_filt[cnt]&0x8000)) {
+	// find the "largest" edge (in noisy signals):
+	S32 zc_slope = abs(demod_filt[cnt] - demod_filt[cnt-1]);
+	if (zc_slope > clockcorr) {
+	  flanke = cnt;		// position of an edge found
+	  clockcorr = zc_slope;
+  //	continue;	// un-comment: first edge only.
+	}
+      } // fi sign-compare
+    } // rof
   } // fi
   if (clockcorr > 0) {	// a edge is in the new bit-samples
     // a ZC should occur on position 1 - than no correction is necssary

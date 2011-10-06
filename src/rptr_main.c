@@ -53,6 +53,7 @@
  * 		     special-function commands RESET + FORCE-BOOTLOADER added
  * 2011-09-25 V0.30a Fixing header / voicedata bug (new offset)
  * 2011-09-29 V0.30b Fix a bug in usb_func() copy function
+ * 2011-10-06 V0.31  using timeout of 5ms for incoming data (USB), flush incomplete pkts
  *
  *
  * ToDo:
@@ -158,6 +159,11 @@ tdata_cpy_rx	data_copyrx	= cdc_copyblock;
 tdata_tx_fct	data_transmit	= cdc_transmit;
 tfunction	data_flushrx	= cdc_flushrx;
 
+#define DATA_TIMEOUT_MS		5	// 5ms time left for handle incoming data
+
+void data_timeout(int rx_length) {
+  data_flushrx();		// simple flush buffer!
+}
 
 
 tRS232paket	rxdatapacket;	// data from pc/gateway received
@@ -485,7 +491,7 @@ void handle_pcdata(void) {
       if (length <= (sizeof(rxdatapacket)-5)) {
 	if (length <= (rxbytes-5)) {
 	  data_copyrx(rxdatapacket.data, length+5);
-	  data_flushrx();	// needed for buggy software!
+	  // data_flushrx();	// needed for buggy software, obsolete - using timeout
 	} else					// packet still in receiving (on slow serial)
 	  length = 0;
       } else {
@@ -649,6 +655,8 @@ int main(void) {
   INTC_init_interrupts();		// Initialize interrupt vectors.
   rptr_init_hardware();
   usb_init();				// Enable VBUS-Check
+
+  cdc_enabletimeout(data_timeout, DATA_TIMEOUT_MS);
 
   // *** initializing constant parts of I/O structures ***
 
