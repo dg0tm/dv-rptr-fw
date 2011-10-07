@@ -54,6 +54,7 @@
  * 2011-09-25 V0.30a Fixing header / voicedata bug (new offset)
  * 2011-09-29 V0.30b Fix a bug in usb_func() copy function
  * 2011-10-06 V0.31  using timeout of 5ms for incoming data (USB), flush incomplete pkts
+ * 2011-01-07 V0.31a STA_CANDUPLEX_MASK > Bit6 in ConfigFlags indicates duplex mode possible
  *
  *
  * ToDo:
@@ -140,6 +141,7 @@ typedef enum {
 #define STA_CRCENABLE_MASK	0x08
 #define STA_IO21_STATE		0x10
 #define STA_IO23_STATE		0x20
+#define STA_CANDUPLEX_MASK	0x40
 #define STA_NOCONFIG_MASK	0x80
 
 #define STA_RECEIVING		0x01
@@ -149,7 +151,7 @@ typedef enum {
 
 // *** Globale Variablen ***
 
-U8		status_control =  STA_NOCONFIG_MASK;	// Holds persitent control-flags
+U8		status_control =  STA_NOCONFIG_MASK|STA_CANDUPLEX_MASK;	// Holds persitent control-flags
 U8		status_state;	// Holds state of RX/TX
 
 // functions used for pc/gateway communication:
