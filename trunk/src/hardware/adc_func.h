@@ -31,7 +31,7 @@
 #include "intc.h"		// handler def
 
 
-#define ADC_CLOCK		4000000L	// max 5MHz 4 full res
+#define ADC_CLOCK		4000000L	// max. 5MHz allowd for full 10bit resolution
 
 #define ADC_REFERENCEVAL	(512-0)		// sp√§ter Messung ohne Signal
 
@@ -41,6 +41,7 @@
 #define HFIN			AVR32_ADC.cdr7
 #define HFDATA_INT_MASK		AVR32_ADC_IER_EOC7_MASK
 #define RSSI_IN                 AVR32_ADC.cdr6
+#define RSSI_INT_MASK		AVR32_ADC_IER_EOC6_MASK
 #define HFIN_CHANNEL            0x80
 #define RSSI_CHANNEL            0x40
 
@@ -49,7 +50,7 @@
 
 
 // Timing
-#define ADC_SHTIM_VAL		0x0F
+#define ADC_SHTIM_VAL		0x03	//= 1µs Sample&Hold Time (min 600ns needed) (value max 0x0F)
 #define ADC_STARTUP_VAL		0x1F
 
 
@@ -65,6 +66,11 @@ void	adc_exit(void);
 #define adc_enable_rssi()	(AVR32_ADC.cher = RSSI_CHANNEL)
 // Disable RSSI_CHANNEL, other ad-channels unchanged
 #define adc_disable_rssi()	(AVR32_ADC.chdr = RSSI_CHANNEL)
+
+// Enable RSSI_CHANNEL, other ad-channels unchanged
+#define adc_enable_hfin()	(AVR32_ADC.cher = HFIN_CHANNEL)
+// Disable RSSI_CHANNEL, other ad-channels unchanged
+#define adc_disable_hfin()	(AVR32_ADC.chdr = HFIN_CHANNEL)
 
 
 void	adc_sethandler(__int_handler handler, unsigned char channel_mask);

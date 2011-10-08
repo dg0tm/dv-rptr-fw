@@ -47,18 +47,6 @@ typedef enum {
 #define leds_green()	{ gpio0_set(RED_LED); gpio0_clr(GREEN_LED); }
 #define leds_yellow()	{ gpio0_clr(RED_LED); gpio0_clr(GREEN_LED); }
 
-/*#if (defined DEBUG)
-#define SetDebug0()	gpio0_set(DBG_PIN0)
-#define ClrDebug0()	gpio0_clr(DBG_PIN0)
-#define SetDebug1()	gpio0_set(DBG_PIN1)
-#define ClrDebug1()	gpio0_clr(DBG_PIN1)
-#else*/
-#define SetDebug0()	{}
-#define ClrDebug0()	{}
-#define SetDebug1()	{}
-#define ClrDebug1()	{}
-//#endif
-
 void	gpio0_set(unsigned int pin);
 void	gpio0_clr(unsigned int pin);
 void	gpio0_tgl(unsigned int pin);

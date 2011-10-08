@@ -176,7 +176,6 @@
 #define DEBUG_PIN1		EXP_IO21_PIN
 #define DEBUG_PIN2		EXP_IO23_PIN
 
-
 #endif
 
 
@@ -324,7 +323,16 @@
 #define RS232PIDTX		AVR32_PDCA_PID_USART1_TX
 
 #define rs232_auto_on()
-#define rs232_force_off()
+#define rs232_force_off()	// nothing defined, because no level-converter is on this board
+
+#ifdef DEBUG
+#define debugpin_set(pin)	gpio0_set(pin)
+#define debugpin_clr(pin)	gpio0_clr(pin)
+#else
+#define debugpin_set(pin)
+#define debugpin_clr(pin)
+#endif
+
 
 
 #endif // HW_DEFS_H_
