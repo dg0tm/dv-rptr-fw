@@ -54,14 +54,17 @@
  * 2011-09-25 V0.30a Fixing header / voicedata bug (new offset)
  * 2011-09-29 V0.30b Fix a bug in usb_func() copy function
  * 2011-10-06 V0.31  using timeout of 5ms for incoming data (USB), flush incomplete pkts
- * 2011-01-07 V0.31a STA_CANDUPLEX_MASK > Bit6 in ConfigFlags indicates duplex mode possible
+ * 2011-10-07 V0.31a STA_CANDUPLEX_MASK > Bit6 in ConfigFlags indicates duplex mode possible
+ * 2011-10-08 V0.40  add TX Status (enum see rptr_func.h) in GETSTATUS message
+ * 		     new RSSI per frame feature returns a unsigned(16) value (4.85V = max = 1023).
  *
  *
  * ToDo:
- * - Transmitter-State enumeration for GET_STATUS
  * - PC watchdog
- * - force-bootloader command
  * ~ first SYNC detect -> Message (early switch on Transceiver)
+ * + RSSI / SQL sampling while receiving
+ * + Transmitter-State enumeration for GET_STATUS
+ * + force-bootloader command
  * + enable / disable receiver (if disabled keep firmware alive by a idle-counter)
  * + enable / disable transmitter (logic only, return NAK on START / SYNC cmd if off)
  * + bugfix transmit-logic
@@ -278,7 +281,7 @@ void init_pcdata(void) {
   headerdata.rsvd2    = 0x00;
   voicedata.head.id   = FRAMESTARTID;
   voicedata.head.len  = swap16(sizeof(voicedata)-5);
-  voicedata.head.cmd  = RPTR_RXSYNC;
+  voicedata.head.cmd  = RPTR_DATA;
   voicedata.rsvd[0]   = 0x00;
   voicedata.rsvd[1]   = 0x00;
 }
@@ -293,6 +296,8 @@ __inline void pc_send_byte(U8 data) {
 
 #define SFC_TURN_OFF_TESTMODE	0x00
 #define SFC_TURN_ON_TESTMODE	0x01
+
+#define SFC_GET_CURR_RSSI	0x08
 
 #define SFC_CORRECT_TX_CLOCK	0x10
 
@@ -329,6 +334,13 @@ void handle_special_func_cmd(int len) {
       pc_send_byte(ACK);
     } else pc_send_byte(NAK);
     break;
+  case SFC_GET_CURR_RSSI:
+    parameter = gmsk_get_rssi_current();
+    answer.head.len = 4;
+    answer.data[PKT_PARAM_IDX] = SFC_GET_CURR_RSSI;
+    answer.data[PKT_PARAM_IDX+1] = parameter & 0xFF;
+    answer.data[PKT_PARAM_IDX+2] = (parameter>>8) & 0xFF;
+    break;
   case SFC_FORCE_BOOTLOADER:
   case SFC_RESET:
     // to prevent unwanted calling - this commands need a parameter as a key:
@@ -364,7 +376,7 @@ __inline void handle_pc_paket(int len) {
       update_status();
       answer.data[PKT_PARAM_IDX+0] = status_control;
       answer.data[PKT_PARAM_IDX+1] = status_state;
-      answer.data[PKT_PARAM_IDX+2] = 0;	// ToDo TX-State
+      answer.data[PKT_PARAM_IDX+2] = rptr_tx_state;
       answer.data[PKT_PARAM_IDX+3] = VoiceRxBufSize;
       answer.data[PKT_PARAM_IDX+4] = VoiceTxBufSize;
       answer.data[PKT_PARAM_IDX+5] = rptr_get_unsend();	// unsend frames left (incl. gaps)
@@ -549,8 +561,8 @@ void handle_hfdata(void) {
     }
     if (RPTR_is_set(RPTR_RX_FRAME)) {
       RPTR_clear(RPTR_RX_FRAME);
-      voicedata.head.cmd = RPTR_DATA;
       voicedata.pktcount = rptr_copycurrentrxvoice(&voicedata.DVdata);
+      voicedata.rssi     = swap16(gmsk_get_rssi_avrge());
 #ifdef PLAIN_SLOWDATA
       dstar_scramble_data(&voicedata);		// Unscramble 3byte slow data
 #endif

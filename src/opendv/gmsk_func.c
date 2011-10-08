@@ -462,6 +462,11 @@ S32	demod_korr;		// use this th have a filtered value of clock drift
 S32	demod_drift;		// avaraged differences between 2 corr values
 int	demod_state_cnt;
 
+U16	rssi_current;		// current rssi measure
+U16	rssi_avrge;		// averaged rssi on data-block end
+int	rssi_cnt;
+U32	rssi_block;		// sum of cnt x rssi_current, reset on databock-set
+
 
 // Demodulator Int simple version
 
@@ -520,11 +525,12 @@ static void gmsk_locked_fkt(S32 correction) {
   Average32(demod_korr,  correction<<16, PLL_LOCK_KORR_FAK);
   Average32(demod_drift, clock_difference, PLL_LOCK_DRIFT_FAK);
   gmsk_phase_corr = __builtin_sats(correction, 4, 7);
+  /*
   if (abs(demod_korr) > DEMOD_THERSHOLD_PLL) {
-    gpio0_set(DEBUG_PIN2);
-
-    gpio0_clr(DEBUG_PIN2);
+    debugpin_set(DEBUG_PIN2);
+    debugpin_clr(DEBUG_PIN2);
   }
+  */
   if (abs(demod_korr) < 0x00000FFF) {
     // noch funktioniert es nicht wie gedacht...
     new_rxpll_period = gmsk_rxpll_clk.u32 + __builtin_sats(demod_korr, 0, 11);	// Fine
@@ -671,13 +677,13 @@ INTERRUPT_FUNC gmsk_samplestart_int(void) {
 #endif
   demod_capture[demod_bitphasecnt] = adc_val;	// fill up sample buffer
   if (++demod_bitphasecnt >= GMSK_BITSAMPLING ) {
-    gpio0_set(DEBUG_PIN1);
+    debugpin_set(DEBUG_PIN1);
     demod_bitphasecnt = 0;
     // copy new samples to the end of demod_adcin:
     dsp16_vect_copy(&demod_adcin[DEMOD_ADC_SIZE-GMSK_BITSAMPLING], demod_capture, GMSK_BITSAMPLING);
     AVR32_ADC.ier = HFDATA_INT_MASK;
   } // fi
-  gpio0_clr(DEBUG_PIN1);
+  debugpin_clr(DEBUG_PIN1);
 }
 
 
@@ -690,6 +696,15 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
   U32 pattern;
   // disable interrupt handling (it is enabled by timer interrupt if a bit-sampling finished)
   AVR32_ADC.idr	= HFDATA_INT_MASK;
+
+  // RSSI /SQL-Line measurement - every 32 bits one additional measure:
+  if ((demod_rxbitcnt&0x1F) == 0) {	// enable RSSI measure every 32 bit times
+    adc_disable_hfin();
+    adc_enable_rssi();
+    adc_startconversion();			// Start AD conversion of RSSI /SQL
+    // a conversion needs 14 ADC-Clocks (@4MHz -> 210 CPU clocks)
+    debugpin_set(DEBUG_PIN2);
+  } // fi trigger reading RSSI
 
   // Filter FIR on demod_adcin -> Signal to demod_filt (first samples are from previous bit)
   demod_filter_to(&demod_filt[GMSK_BITSAMPLING]);
@@ -738,6 +753,20 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
   // keep samples of current bit:
   dsp16_vect_copy(demod_filt, &demod_filt[DEMOD_FILT_SIZE/2], DEMOD_FILT_SIZE/2);
 
+  // RSSI /SQL-Line measurement - now more than 210 clocks processed...
+  if (RSSI_CH_ENABLED()) {
+    // Test conversion finished (function runs 210 cpu cycles)?
+#ifdef DEBUG
+    if (AVR32_ADC.sr & 0x40) debugpin_clr(DEBUG_PIN2);
+#endif
+    rssi_current = RSSI_IN;
+    adc_disable_rssi();
+    adc_enable_hfin();
+    rssi_block += rssi_current;
+    rssi_cnt++;
+    // store value
+  } // fi RSSI measure
+
   // saving of SHR if a pointer define:
   demod_rxbitcnt++;
   if (demod_rxptr != NULL) {
@@ -749,6 +778,9 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
     if (demod_rxbitcnt >= demod_rxsize) {
       demod_rxbitcnt = 0;
       demod_rxptr = NULL;	// vor ReceiveFkt.
+      rssi_avrge = rssi_block / rssi_cnt;
+      rssi_cnt   = 0;
+      rssi_block = 0;
       if (demod_received_fkt != NULL) demod_received_fkt();
     } // fi fertig
   } // fi valid ptr to store data
@@ -773,8 +805,9 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
     if (demod_framesync_fkt != NULL) demod_framesync_fkt();
     break;
   } // hctiws
+
 #ifdef DEMOD_DBG_BITBUFSIZE
-  // Für Test Back-Buffer:
+  // a additional sample-buffer fpr debugging:
   dsp16_vect_move(demod_backbuf, &demod_backbuf[GMSK_BITSAMPLING], DEMOD_DBG_BITBUFSIZE*4-GMSK_BITSAMPLING);
   dsp16_vect_copy(&demod_backbuf[DEMOD_DBG_BITBUFSIZE*4-GMSK_BITSAMPLING], demod_in, GMSK_BITSAMPLING);
 #endif
@@ -912,6 +945,14 @@ __inline void gmsk_set_receivebuf(unsigned long *rxbuf, int bit_len) {
 
 __inline int gmsk_channel_idle(void) {
   return (demod_state==DEMOD_unlocked);
+}
+
+__inline unsigned short gmsk_get_rssi_avrge(void) {
+  return rssi_avrge;
+}
+
+__inline unsigned short gmsk_get_rssi_current(void) {
+  return rssi_current;
 }
 
 //! @}

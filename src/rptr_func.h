@@ -33,6 +33,11 @@
 
 #define VoiceRxBufSize	DSTAR_SYNCINTERVAL		// Fixed to one sync
 
+typedef enum {
+  RPTRTX_disabled, RPTRTX_idle, RPTRTX_txdelay, RPTRTX_preamble,
+  RPTRTX_header, RPTRTX_voicedata, RPTRTX_lastframe, RPTRTX_eot
+} trptr_tx_state;
+
 
 extern unsigned int RPTR_Flags;
 // Receive Flags (checked in handle_hfdata()) Bit 0..7
@@ -53,6 +58,8 @@ extern unsigned int RPTR_Flags;
 #define RPTR_is_set(f)		(RPTR_Flags&f)
 #define RPTR_set(f)		(RPTR_Flags |= f)
 #define RPTR_clear(f)		(RPTR_Flags &= ~f)
+
+extern trptr_tx_state 		rptr_tx_state;
 
 
 // maximum receive packets, if no sync-frame received:

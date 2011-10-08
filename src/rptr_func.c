@@ -27,6 +27,8 @@
  * 2011-07-07  JA  re-struct slow-data-sending system. Only 6-byte block FILL data left here
  * 2011-09-05  JA  rptr_addtxvoice() nummeration logic bugfix
  * 2011-09-29  JA  silence-frame with slow-data "fff" (means 'unnused' on Icom devices)
+ * 2011-10-08  JA  rptr_rx_state variable to get the TX State in a STATUS message.
+ * 		   change unused function rptr_routeflags(), correct behavior, if "DIRECT" found in RPT1
  */
 
 
@@ -69,11 +71,13 @@ ALIGNED_DATA static const unsigned long SilenceFrame[3] = {
 
 
 
-// Globale Variablen für D-Star-Transmittions:
+// globale variables for D-Star-Transmittions:
 
 unsigned int	RPTR_Flags;
+trptr_tx_state 	rptr_tx_state;
 
-tds_header DSTAR_HEADER = {		// Der zu sendende Header
+
+tds_header DSTAR_HEADER = {		// actual header for tx in decoded form
   flags:{0x00, 0x00, 0x00},
   RPT2Call:"       B",
   RPT1Call:"       G",
@@ -125,6 +129,7 @@ __inline void rptr_tx_preamble(void) {
 
 __inline void rptr_tx_stop(void) {
   gmsk_transmit((U32 *)lastframe_dstar, DSTAR_LASTFRAMEBITSIZE_TX, DSTAR_LASTFRAMEBITSIZE_TX-2);
+  rptr_tx_state = RPTRTX_eot;
 }
 
 
@@ -143,6 +148,7 @@ void rptr_stopped(void) {
 #if (DVTX_TIMER_CH==IDLE_TIMER_CH)
   idle_timer_start();
 #endif
+  rptr_tx_state = RPTRTX_idle;
 }
 
 // rptr_transmit_stopframe() append a END-OF-TRANSMISSION id after voice data (no slowdata)
@@ -158,6 +164,7 @@ void rptr_transmit_voicedata(void) {
   if (TxVoice_RdPos == TxVoice_WrPos) {	// no data left, flushed buffer!
     gmsk_transmit((U32 *)&SilenceFrame, DSTAR_VOICEFRAMEBITSIZE, 1);
     gmsk_set_reloadfunc(&rptr_transmit_stopframe);
+    rptr_tx_state = RPTRTX_lastframe;
   } else {
     tds_voicedata *voicedat = &DStar_TxVoice[TxVoice_RdPos];
     // replace voice data, currently transmitting with Silence
@@ -166,6 +173,7 @@ void rptr_transmit_voicedata(void) {
     if (TxVoice_RdPos == TxVoice_WrPos) {	// last voice frame?
       gmsk_transmit(voicedat->packet, DSTAR_VOICEFRAMEBITSIZE, 1);
       gmsk_set_reloadfunc(&rptr_transmit_stopframe);
+      rptr_tx_state = RPTRTX_lastframe;
     } else {
       gmsk_transmit(voicedat->packet, DSTAR_FRAMEBITSIZE, DSTAR_FRAMEBITSIZE-DSTAR_BEFOREFRAMEENDS);
     }
@@ -173,6 +181,7 @@ void rptr_transmit_voicedata(void) {
     // DSTAR_BEFOREFRAMEENDS < 32: All bits we need for the current tx are in gmsk-buffer
     memcpy(voicejusttxed, SilenceFrame, sizeof(tds_voicedata));
     RPTR_TxFrameCount++;
+    rptr_tx_state = RPTRTX_voicedata;
   }
 }
 
@@ -197,12 +206,14 @@ void rptr_transmit_header(void) {
     gmsk_set_reloadfunc(rptr_transmit_testloop);
   else
     gmsk_set_reloadfunc(rptr_transmit_voicedata);
+  rptr_tx_state = RPTRTX_header;
 }
 
 
 void rptr_restart_header(void) {
   gmsk_transmit((U32 *)&preamble_dstar[4], 15, 1);
   gmsk_set_reloadfunc(rptr_transmit_header);		// unmittelbar Header hinter
+  rptr_tx_state = RPTRTX_preamble;
 }
 
 
@@ -259,7 +270,6 @@ void rptr_receivedframe(void) {
     index = (RPTR_RxFrameCount+1) % VoiceRxBufSize;	// position of next frame
     gmsk_set_receivebuf(DStar_RxVoice[index].packet, DSTAR_FRAMEBITSIZE);
   } else {				// fi valid data
-    //gpio0_set(DEBUG_PIN2);
     RPTR_Flags |= RPTR_RX_LOST;
     RPTR_Flags &= ~RPTR_RECEIVING;
     LED_Clear(LED_GREEN);
@@ -306,7 +316,6 @@ void rptr_receivedframesync(void) {
     RPTR_RxLastSync   = 0;
     DStar_LostSyncCounter = 0;
     LED_Set(LED_GREEN);
-    //gpio0_clr(DEBUG_PIN2);
   }
 }
 
@@ -350,6 +359,7 @@ void rptr_update_header() {
 
 void rptr_init_data(void) {
   U8 cnt;
+  rptr_tx_state = RPTRTX_disabled;
   rptr_update_header();
   RPTR_Flags = 0;
   for (cnt=0; cnt<VoiceTxBufSize; cnt++) {
@@ -375,9 +385,10 @@ void rptr_exit_hardware(void) {
 
 void rptr_routeflags(void) {
   char *rr1 = DSTAR_HEADER.RPT1Call;
-  int cnt, filled = 0;
-  for (cnt=0; cnt<8; cnt++) {
-    if ((*rr1 > 0x20) && (*rr1 < 0x80)) {
+  int cnt, filled;
+  filled = memcmp(rr1, "DIRECT", 6);		// no "DIRECT" text is in RPT1 -> use PTR
+  if (filled!=0) for (cnt=0; cnt<8; cnt++) {	// test for valid ASCII-Chars
+    if ((*rr1 > 0x20) && (*rr1 < 0x80)) {	// if some text found, use PTR
       filled++;
       break;
     }
@@ -459,24 +470,27 @@ void rptr_copyrxvoice(tds_voicedata *dest, unsigned char nr) {
 
 
 
-// später mit update_header (Übergabe)
 void rptr_transmit(void) {
 #if (DVTX_TIMER_CH==IDLE_TIMER_CH)
   idle_timer_stop();
 #endif
-  TxVoice_RdPos = 0;
-  TxVoice_WrPos = 0;
   if (is_pttactive()) {
     if (RPTR_is_set(RPTR_TX_EARLYPTT)) {
       RPTR_clear(RPTR_TX_EARLYPTT);
+      TxVoice_RdPos = 0;
+      TxVoice_WrPos = 0;
       gmsk_set_reloadfunc(&rptr_transmit_header); // Header aussenden
+      rptr_tx_state = RPTRTX_preamble;
     } else {
       gmsk_set_reloadfunc(&rptr_break_current);	// unmittelbar Header hinter EOT
     }
   } else {
+    TxVoice_RdPos = 0;
+    TxVoice_WrPos = 0;
     enable_ptt();
     gmsk_set_reloadfunc(&rptr_transmit_header);	// unmittelbar Header hinter
     rptr_tx_preamble();				// die Preamble setzen
+    rptr_tx_state = RPTRTX_preamble;
   }
 }
 
@@ -487,27 +501,8 @@ void rptr_transmit_early_start(void) {
     enable_ptt();
     gmsk_set_reloadfunc(&rptr_transmit_stopframe);	// kill TX, if no header adds
     rptr_tx_preamble();
+    rptr_tx_state = RPTRTX_txdelay;
   }
-}
-
-
-void rptr_transmit_data(void) {
-  //DVnotx, DVtxdelay, DVtxpreamble, DVtxheader, DVtxvoice, DVtxdata
-  /*
-  if ((dvstate!=DVtxvoice)&&(dvstate!=DVtxvoicesync)) {	// Wechsel von Sprache
-    if (dvstate != DVdisabled) {
-      gmsk_stoptimer();
-    } // fi
-    dvstate = DVtxstartdata;			// Nach dem Header, nur Slow-Data ohne Voice
-    gmsk_set_reloadfunc(&rptr_transmit_header);	// unmittelbar Header hinter
-    rptr_tx_preamble();				// die Preamble setzen
-  } else {	// fi not sprache
-    dvstate = DVtxdata;
-    gmsk_set_reloadfunc(&rptr_transmit_slowdata);	// unmittelbar Header hinter
-  } // esle
-//  ambe_getsilence(VoiceBuffer.voice);
-  rxstate = DVnorx;
-  */
 }
 
 
@@ -515,12 +510,15 @@ void rptr_endtransmit(void) {
 
 }
 
+
+
 /* rptr_addtxvoice() writes a voice-frame into transmit buffer
  * keep an eye of buffer overflow's and write to the buffer, who was in tx
  */
 void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
   tds_voicedata *new_data;
-  // Test: uncomment next line to disable buffer-sorting (ignore pkt_nr)
+
+  // Test: un-commend next line to disable buffer-sorting (ignore pkt_nr)
   // pkt_nr = TxVoice_WrPos;	// *** TEST
 
 #if VoiceTxBufSize != DSTAR_SYNCINTERVAL
@@ -553,7 +551,7 @@ void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
 }
 
 
-unsigned char rptr_get_unsend(void) {
+__inline unsigned char rptr_get_unsend(void) {
   return (TxVoice_WrPos+VoiceTxBufSize-TxVoice_RdPos) % VoiceTxBufSize;
 }
 
