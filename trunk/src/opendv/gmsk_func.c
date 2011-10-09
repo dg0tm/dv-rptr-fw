@@ -118,200 +118,6 @@
 
 
 
-// *** Modulator Variables ***
-
-Union32 gmsk_txpll_accu;
-
-
-// *** Transmitter / Receiver Gauss-FIR Filter and Sample-Buffer ***
-#define GaussCoeffsSize		9
-#define MOD_IN_SIZE		(GaussCoeffsSize+GMSK_OVERSAMPLING+1)
-#define MOD_IN_FSIZE		(GaussCoeffsSize+GMSK_OVERSAMPLING-1)
-#define GMSK_POSTAMBLEBITS	(MOD_IN_FSIZE)
-
-/*
-// Gaussian filter for a BT of 0.3, calculated with FilterExpress:
-A_ALIGNED const dsp16_t GaussCoeffs[GaussCoeffsSize] = {
-  DSP16_Q(0.000161675648356901),
-  DSP16_Q(0.00490155244379313),
-  DSP16_Q(0.0560638566547222),
-  DSP16_Q(0.24193157868456),
-  DSP16_Q(0.393878633534559),
-  DSP16_Q(0.24193157868456),
-  DSP16_Q(0.0560638566547222),
-  DSP16_Q(0.00490155244379313),
-  DSP16_Q(0.000161675648356901)
-};
-*/
-// Gaussian filter for a BT of 0.5, calculated with MATLAB (from G4KLX):
-A_ALIGNED const dsp16_t GaussCoeffs[GaussCoeffsSize] = {
-  DSP16_Q(0.000304557692183),
-  DSP16_Q(0.006860972327255),
-  DSP16_Q(0.063476277434485),
-  DSP16_Q(0.241183125455494),
-  DSP16_Q(0.376350134181166),
-  DSP16_Q(0.241183125455494),
-  DSP16_Q(0.063476277434485),
-  DSP16_Q(0.006860972327255),
-  DSP16_Q(0.000304557692183)
-};
-
-
-
-// *** Transmitter Buffer and Variables ****
-
-A_ALIGNED dsp16_t modulator_in[MOD_IN_SIZE];		// Eingangsbuffer für FIR Filter
-A_ALIGNED dsp16_t modulator_out[GMSK_OVERSAMPLING];	// geGaußte DAC Daten
-A_ALIGNED dsp16_t dac_out_buffer[GMSK_OVERSAMPLING];	// keep modulator_out double_puffered
-
-U32 gmsk_txdelay = GMSK_STDTXDELAY;
-U32 gmsk_overcnt, gmsk_tsr, gmsk_bitcnt, gmsk_bittimer;	// Zählervariablen Modulator
-U32 gmsk_bitlen, gmsk_nextbitlen, gmsk_alertpos, gmsk_next_alertpos;
-U32 *gmsk_dataptr, *gmsk_nextdataptr;		// Zeiger auf aktuelles Datum
-
-dsp16_t dac_one_val  = DAC_MIDDLE + GMSK_DEFAULT_BW;
-dsp16_t dac_zero_val = DAC_MIDDLE - GMSK_DEFAULT_BW;
-
-U32 gmsk_txmod_clk = GMSK_MOD_PHASE;		// Sendetakt variabel f�r Tests
-
-tgmsk_reloadfunc gmsk_reloadhandler;		// Functionvar
-
-
-
-/*! \name GMSK Modulator Interrupt-Functions
- */
-//! @{
-
-static __inline void gmsk_nextdacval(volatile dsp16_t newval) {
-  dsp16_t *newvals = &modulator_in[MOD_IN_SIZE-GMSK_OVERSAMPLING];
-  dsp16_vect_move(modulator_in, &modulator_in[GMSK_OVERSAMPLING], MOD_IN_SIZE-GMSK_OVERSAMPLING);
-  while (newvals < &modulator_in[MOD_IN_SIZE]) {
-    *newvals++ = newval;
-  } // ehliw
-}
-
-
-static __inline void gmsk_stop_txtimer(void) {
-  GMSK_TX_TIMER.ccr = AVR32_TC_CLKDIS_MASK;	// Stop Timer
-  GMSK_TX_TIMER.idr = 0xFF;
-  GMSK_TX_TIMER.sr;				// Clear Pending INT-Requests
-}
-
-
-INTERRUPT_FUNC gmsk_begin_int(void);	// forward
-
-
-INTERRUPT_FUNC gmsk_modulator_int(void) {
-  dac_modulate(dac_out_buffer[gmsk_overcnt]);
-  GMSK_TX_TIMER.sr;
-  GMSK_TX_TIMER.rc = GMSK_MOD_DEFAULT + gmsk_txpll_accu.u16[0];
-  gmsk_txpll_accu.u16[0] = 0;	// Clear Alternate-Bit
-  gmsk_txpll_accu.u32 += gmsk_txmod_clk;	//GMSK_MOD_PHASE;
-  if (++gmsk_overcnt >= GMSK_OVERSAMPLING) {
-    dsp16_vect_copy(dac_out_buffer, modulator_out, GMSK_OVERSAMPLING);
-    AVR32_SPI.ier = AVR32_SPI_IER_TXEMPTY_MASK;
-    gmsk_overcnt = 0;
-  } // fi every 4 times (oversampling)
-}
-
-
-
-INTERRUPT_FUNC gmsk_runidle_int(void) {
-  AVR32_SPI.idr = AVR32_SPI_IER_TXEMPTY_MASK;
-  if (gmsk_bittimer>0) {
-    gmsk_bittimer--;
-    // Verschiebe Daten in modulator_in (Vektor für FIR).
-    gmsk_nextdacval(DAC_MIDDLE);
-    // Gauss-Filter:
-    dsp16_filt_fir(modulator_out, modulator_in, MOD_IN_FSIZE, (dsp16_t *)GaussCoeffs, GaussCoeffsSize);
-  } else {
-    if (gmsk_nextbitlen==0) {			// Kein neues Paket
-      gmsk_stop_txtimer();
-    } else {
-      gmsk_dataptr = gmsk_nextdataptr;	// Lade nächstes Datapkt
-      gmsk_bitlen  = gmsk_nextbitlen;
-    }
-    GMSK_TX_TIMER.rc = (((MASTERCLOCK+1)/2)*GMSK_TXDRESOLUTION+500)/1000;	// Warte 1ms nach Idle
-    INTC_register_interrupt(gmsk_begin_int, GMSK_TX_TIMER_IRQ, DV_MODWRK_INTPRIO);
-    gmsk_nextdataptr = NULL;			// Datenzeiger
-    gmsk_nextbitlen  = 0;
-  }
-}
-
-
-INTERRUPT_FUNC gmsk_calcnextbit_int(void) {
-  AVR32_SPI.idr = AVR32_SPI_IER_TXEMPTY_MASK;
-  AVR32_SPI.sr;
-  // Setting Timer-Period - modulate to a exact Baudrate
-//  if (++gmsk_overcnt >= GMSK_OVERSAMPLING) {
-    dsp16_t mod_new = dac_zero_val;
-
-    // Daten laden, Pointer, Counter:
-    if (gmsk_bitcnt < gmsk_bitlen) {		// Lade neue DAC-Daten
-      if ((gmsk_bitcnt&0x1F) == 0) {		// bei jeden 32igsten Bit laden
-        gmsk_tsr = swap32(*gmsk_dataptr++);
-//        gmsk_tsr = GMSK_SYNCPATTERN;	// <<<<< TEST
-      } // fi next word load
-//      if (gmsk_tsr&0x80000000)		// Daten bitweise auswerten MSB first
-      if (gmsk_tsr&0x00000001)			// Daten bitweise auswerten LSB first
-	mod_new = dac_one_val;
-      gmsk_tsr >>= 1;
-      gmsk_bitcnt++;
-    } // fi Bits zum aussenden
-    if (gmsk_bitcnt >= gmsk_bitlen) {		// Ende Gelände?
-      gmsk_bitcnt = 0;
-      if (gmsk_nextbitlen > 0) { //&& (gmsk_nextdataptr != NULL)) {
-	gmsk_dataptr = gmsk_nextdataptr;	// Lade nächstes Datapkt
-	gmsk_bitlen  = gmsk_nextbitlen;
-	gmsk_alertpos = gmsk_next_alertpos;
-      } else {
-	gmsk_bitlen = 0;
-	gmsk_bittimer = GMSK_POSTAMBLEBITS;
-	gmsk_alertpos = 0;
-	INTC_register_interrupt(gmsk_runidle_int, AVR32_SPI_IRQ, DV_MODWRK_INTPRIO);
-	mod_new = DAC_MIDDLE;
-      } // esle "doch kein nächstes Paket"
-      gmsk_nextdataptr = NULL;			// Datenzeiger
-      gmsk_nextbitlen  = 0;
-    } // fi alle Bits raus
-    gmsk_nextdacval(mod_new);	// Verschiebe Daten in modulator_in (Vektor für FIR).
-    // Gauss-Filter:
-    dsp16_filt_fir(modulator_out, modulator_in, MOD_IN_FSIZE, (dsp16_t *)GaussCoeffs, GaussCoeffsSize);
-    // Fast-Reload
-    if ((gmsk_reloadhandler != NULL) && (gmsk_bitcnt==gmsk_alertpos)) {
-      gmsk_reloadhandler();
-    } // fi fast reload handler
-//  } // fi oversampling
-}
-
-
-INTERRUPT_FUNC gmsk_begin_int(void) {		// Starts Transfer after a TX-Delay
-  GMSK_TX_TIMER.sr;
-  if (gmsk_bittimer==0) {
-    INTC_register_interrupt(gmsk_modulator_int, GMSK_TX_TIMER_IRQ, DV_MODOUT_INTPRIO);
-    INTC_register_interrupt(gmsk_calcnextbit_int, AVR32_SPI_IRQ, DV_MODWRK_INTPRIO);
-    GMSK_TX_TIMER.rc = GMSK_MOD_DEFAULT;	// Periode
-    gmsk_txpll_accu.u32 = 0;
-  } else {
-    gmsk_bittimer--;
-  }
-} // end int
-
-
-static __inline void gmsk_starttxdelay(void) {
-  gmsk_stop_txtimer();
-  INTC_register_interrupt(gmsk_begin_int, GMSK_TX_TIMER_IRQ, DV_MODWRK_INTPRIO);
-  GMSK_TX_TIMER.rc  = (((MASTERCLOCK+1)/2)*GMSK_TXDRESOLUTION+500)/1000;	// 1ms
-  GMSK_TX_TIMER.ccr = AVR32_TC_SWTRG_MASK | AVR32_TC_CLKEN_MASK;
-  gmsk_bittimer     = gmsk_txdelay/GMSK_TXDRESOLUTION;
-  GMSK_TX_TIMER.ier = AVR32_TC_CPCS_MASK;
-}
-
-
-//! @}
-
-
-
 // *** DEMODULATOR ***
 
 /*! \name GMSK Demodulator Interrupt-Functions
@@ -818,6 +624,209 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
 //! @}
 
 
+// *** Modulator Variables ***
+
+Union32 gmsk_txpll_accu;
+
+
+// *** Transmitter / Receiver Gauss-FIR Filter and Sample-Buffer ***
+#define GaussCoeffsSize		9
+#define MOD_IN_SIZE		(GaussCoeffsSize+GMSK_OVERSAMPLING+1)
+#define MOD_IN_FSIZE		(GaussCoeffsSize+GMSK_OVERSAMPLING-1)
+#define GMSK_POSTAMBLEBITS	(MOD_IN_FSIZE)
+
+/*
+// Gaussian filter for a BT of 0.3, calculated with FilterExpress:
+A_ALIGNED const dsp16_t GaussCoeffs[GaussCoeffsSize] = {
+  DSP16_Q(0.000161675648356901),
+  DSP16_Q(0.00490155244379313),
+  DSP16_Q(0.0560638566547222),
+  DSP16_Q(0.24193157868456),
+  DSP16_Q(0.393878633534559),
+  DSP16_Q(0.24193157868456),
+  DSP16_Q(0.0560638566547222),
+  DSP16_Q(0.00490155244379313),
+  DSP16_Q(0.000161675648356901)
+};
+*/
+// Gaussian filter for a BT of 0.5, calculated with MATLAB (from G4KLX):
+A_ALIGNED const dsp16_t GaussCoeffs[GaussCoeffsSize] = {
+  DSP16_Q(0.000304557692183),
+  DSP16_Q(0.006860972327255),
+  DSP16_Q(0.063476277434485),
+  DSP16_Q(0.241183125455494),
+  DSP16_Q(0.376350134181166),
+  DSP16_Q(0.241183125455494),
+  DSP16_Q(0.063476277434485),
+  DSP16_Q(0.006860972327255),
+  DSP16_Q(0.000304557692183)
+};
+
+
+
+// *** Transmitter Buffer and Variables ****
+
+A_ALIGNED dsp16_t modulator_in[MOD_IN_SIZE];		// Eingangsbuffer für FIR Filter
+A_ALIGNED dsp16_t modulator_out[GMSK_OVERSAMPLING];	// geGaußte DAC Daten
+A_ALIGNED dsp16_t dac_out_buffer[GMSK_OVERSAMPLING];	// keep modulator_out double_puffered
+
+U32 gmsk_txdelay = GMSK_STDTXDELAY;
+U32 gmsk_overcnt, gmsk_tsr, gmsk_bitcnt, gmsk_bittimer;	// Zählervariablen Modulator
+U32 gmsk_bitlen, gmsk_nextbitlen, gmsk_alertpos, gmsk_next_alertpos;
+U32 *gmsk_dataptr, *gmsk_nextdataptr;		// Zeiger auf aktuelles Datum
+
+dsp16_t dac_one_val  = DAC_MIDDLE + GMSK_DEFAULT_BW;
+dsp16_t dac_zero_val = DAC_MIDDLE - GMSK_DEFAULT_BW;
+
+U32 gmsk_txmod_clk = GMSK_MOD_PHASE;		// Sendetakt variabel f�r Tests
+
+tgmsk_reloadfunc gmsk_reloadhandler;		// Functionvar
+
+
+
+/*! \name GMSK Modulator Interrupt-Functions
+ */
+//! @{
+
+static __inline void gmsk_nextdacval(volatile dsp16_t newval) {
+  dsp16_t *newvals = &modulator_in[MOD_IN_SIZE-GMSK_OVERSAMPLING];
+  dsp16_vect_move(modulator_in, &modulator_in[GMSK_OVERSAMPLING], MOD_IN_SIZE-GMSK_OVERSAMPLING);
+  while (newvals < &modulator_in[MOD_IN_SIZE]) {
+    *newvals++ = newval;
+  } // ehliw
+}
+
+
+static __inline void gmsk_stop_txtimer(void) {
+  GMSK_TX_TIMER.ccr = AVR32_TC_CLKDIS_MASK;	// Stop Timer
+  GMSK_TX_TIMER.idr = 0xFF;
+  GMSK_TX_TIMER.sr;				// Clear Pending INT-Requests
+}
+
+
+INTERRUPT_FUNC gmsk_begin_int(void);	// forward
+
+
+INTERRUPT_FUNC gmsk_modulator_int(void) {
+  dac_modulate(dac_out_buffer[gmsk_overcnt]);
+  GMSK_TX_TIMER.sr;
+  GMSK_TX_TIMER.rc = GMSK_MOD_DEFAULT + gmsk_txpll_accu.u16[0];
+  gmsk_txpll_accu.u16[0] = 0;	// Clear Alternate-Bit
+  gmsk_txpll_accu.u32 += gmsk_txmod_clk;	//GMSK_MOD_PHASE;
+  if (++gmsk_overcnt >= GMSK_OVERSAMPLING) {
+    dsp16_vect_copy(dac_out_buffer, modulator_out, GMSK_OVERSAMPLING);
+    AVR32_SPI.ier = AVR32_SPI_IER_TXEMPTY_MASK;
+    gmsk_overcnt = 0;
+  } // fi every 4 times (oversampling)
+}
+
+
+
+INTERRUPT_FUNC gmsk_runidle_int(void) {
+  AVR32_SPI.idr = AVR32_SPI_IER_TXEMPTY_MASK;
+  if (gmsk_bittimer>0) {
+    gmsk_bittimer--;
+    // Verschiebe Daten in modulator_in (Vektor für FIR).
+    gmsk_nextdacval(DAC_MIDDLE);
+    // Gauss-Filter:
+    dsp16_filt_fir(modulator_out, modulator_in, MOD_IN_FSIZE, (dsp16_t *)GaussCoeffs, GaussCoeffsSize);
+  } else {
+    if (gmsk_nextbitlen==0) {			// Kein neues Paket
+#if (DVRX_TIMER_CH == DVTX_TIMER_CH)
+      if (demod_syncstart_fkt != NULL) {	// set to Demod
+	gmsk_demodulator_start();
+      } else				// No Sync-Func defined: Stop
+#endif
+      gmsk_stop_txtimer();
+    } else {
+      gmsk_dataptr = gmsk_nextdataptr;	// Lade nächstes Datapkt
+      gmsk_bitlen  = gmsk_nextbitlen;
+    }
+#if (DVRX_TIMER_CH == DVTX_TIMER_CH)
+    if (gmsk_nextbitlen > 0)
+#endif
+    {
+      GMSK_TX_TIMER.rc = (((MASTERCLOCK+1)/2)*GMSK_TXDRESOLUTION+500)/1000;	// Warte 1ms nach Idle
+      INTC_register_interrupt(gmsk_begin_int, GMSK_TX_TIMER_IRQ, DV_MODWRK_INTPRIO);
+    }
+    gmsk_nextdataptr = NULL;			// Datenzeiger
+    gmsk_nextbitlen  = 0;
+  }
+}
+
+
+INTERRUPT_FUNC gmsk_calcnextbit_int(void) {
+  AVR32_SPI.idr = AVR32_SPI_IER_TXEMPTY_MASK;
+  AVR32_SPI.sr;
+  // Setting Timer-Period - modulate to a exact Baudrate
+//  if (++gmsk_overcnt >= GMSK_OVERSAMPLING) {
+    dsp16_t mod_new = dac_zero_val;
+
+    // Daten laden, Pointer, Counter:
+    if (gmsk_bitcnt < gmsk_bitlen) {		// Lade neue DAC-Daten
+      if ((gmsk_bitcnt&0x1F) == 0) {		// bei jeden 32igsten Bit laden
+        gmsk_tsr = swap32(*gmsk_dataptr++);
+//        gmsk_tsr = GMSK_SYNCPATTERN;	// <<<<< TEST
+      } // fi next word load
+//      if (gmsk_tsr&0x80000000)		// Daten bitweise auswerten MSB first
+      if (gmsk_tsr&0x00000001)			// Daten bitweise auswerten LSB first
+	mod_new = dac_one_val;
+      gmsk_tsr >>= 1;
+      gmsk_bitcnt++;
+    } // fi Bits zum aussenden
+    if (gmsk_bitcnt >= gmsk_bitlen) {		// Ende Gelände?
+      gmsk_bitcnt = 0;
+      if (gmsk_nextbitlen > 0) { //&& (gmsk_nextdataptr != NULL)) {
+	gmsk_dataptr = gmsk_nextdataptr;	// Lade nächstes Datapkt
+	gmsk_bitlen  = gmsk_nextbitlen;
+	gmsk_alertpos = gmsk_next_alertpos;
+      } else {
+	gmsk_bitlen = 0;
+	gmsk_bittimer = GMSK_POSTAMBLEBITS;
+	gmsk_alertpos = 0;
+	INTC_register_interrupt(gmsk_runidle_int, AVR32_SPI_IRQ, DV_MODWRK_INTPRIO);
+	mod_new = DAC_MIDDLE;
+      } // esle "doch kein nächstes Paket"
+      gmsk_nextdataptr = NULL;			// Datenzeiger
+      gmsk_nextbitlen  = 0;
+    } // fi alle Bits raus
+    gmsk_nextdacval(mod_new);	// Verschiebe Daten in modulator_in (Vektor für FIR).
+    // Gauss-Filter:
+    dsp16_filt_fir(modulator_out, modulator_in, MOD_IN_FSIZE, (dsp16_t *)GaussCoeffs, GaussCoeffsSize);
+    // Fast-Reload
+    if ((gmsk_reloadhandler != NULL) && (gmsk_bitcnt==gmsk_alertpos)) {
+      gmsk_reloadhandler();
+    } // fi fast reload handler
+//  } // fi oversampling
+}
+
+
+INTERRUPT_FUNC gmsk_begin_int(void) {		// Starts Transfer after a TX-Delay
+  GMSK_TX_TIMER.sr;
+  if (gmsk_bittimer==0) {
+    INTC_register_interrupt(gmsk_modulator_int, GMSK_TX_TIMER_IRQ, DV_MODOUT_INTPRIO);
+    INTC_register_interrupt(gmsk_calcnextbit_int, AVR32_SPI_IRQ, DV_MODWRK_INTPRIO);
+    GMSK_TX_TIMER.rc = GMSK_MOD_DEFAULT;	// Periode
+    gmsk_txpll_accu.u32 = 0;
+  } else {
+    gmsk_bittimer--;
+  }
+} // end int
+
+
+static __inline void gmsk_starttxdelay(void) {
+  gmsk_stop_txtimer();
+  INTC_register_interrupt(gmsk_begin_int, GMSK_TX_TIMER_IRQ, DV_MODWRK_INTPRIO);
+  GMSK_TX_TIMER.rc  = (((MASTERCLOCK+1)/2)*GMSK_TXDRESOLUTION+500)/1000;	// 1ms
+  GMSK_TX_TIMER.ccr = AVR32_TC_SWTRG_MASK | AVR32_TC_CLKEN_MASK;
+  gmsk_bittimer     = gmsk_txdelay/GMSK_TXDRESOLUTION;
+  GMSK_TX_TIMER.ier = AVR32_TC_CPCS_MASK;
+}
+
+
+//! @}
+
+
 
 /*! \name Modulator API Functions
  */
@@ -909,6 +918,8 @@ void gmsk_demodulator_start(void) {
   gmsk_demod_unlock();
 #if (DVRX_TIMER_CH==IDLE_TIMER_CH)
   GMSK_RX_TIMER.cmr = TIMER_CMR_VALUE;
+#endif
+#if (DVRX_TIMER_CH==IDLE_TIMER_CH)||(DVRX_TIMER_CH==DVTX_TIMER_CH)
   INTC_register_interrupt(gmsk_samplestart_int, GMSK_RX_TIMER_IRQ, DV_DEMODIN_INTPRIO);
 #endif
   GMSK_RX_TIMER.sr;
@@ -1013,6 +1024,15 @@ void gmsk_exit(void) {
   adc_exit();
   dac_exit();
 }
+
+
+
+#if (DVRX_TIMER_CH == DVTX_TIMER_CH)
+__inline void gmsk_stoptimer(void) {
+  gmsk_stop_txtimer();
+}
+#endif
+
 
 //! @}
 
