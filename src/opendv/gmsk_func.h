@@ -67,7 +67,9 @@ typedef void (*tgmsk_func)(void);
 void	gmsk_init(void);
 void	gmsk_exit(void);
 
+#if (DVRX_TIMER_CH == DVTX_TIMER_CH)
 void	gmsk_stoptimer(void);
+#endif
 
 void	gmsk_transmit(unsigned long *data, unsigned int length_in_bits, unsigned int alertbitpos);
 void	gmsk_modulator_stop(void);
