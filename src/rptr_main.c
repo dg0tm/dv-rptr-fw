@@ -57,6 +57,7 @@
  * 2011-10-07 V0.31a STA_CANDUPLEX_MASK > Bit6 in ConfigFlags indicates duplex mode possible
  * 2011-10-08 V0.40  add TX Status (enum see rptr_func.h) in GETSTATUS message
  * 		     new RSSI per frame feature returns a unsigned(16) value (4.85V = max = 1023).
+ * 2011-10-11 V0.40a fixing memory overflow on weak signals, if a sync-pattern detected
  *
  *
  * ToDo:

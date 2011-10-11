@@ -47,6 +47,7 @@
  * 		cleanup code (remove old demod function)
  * 2011-09-21	working sample clock-recover-algorithm
  * 2011-09-22	improved edge detect an bit-restore, need to be tested
+ * 2011-10-11	fixing memory overflow on weak signals, if a sync-pattern detected
  */
 
 
@@ -598,15 +599,26 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
     break;
   case GMSK_SYNCSTART:
     demod_rxbitcnt = 0;
+    demod_rxptr    = NULL;
     if (demod_syncstart_fkt != NULL) demod_syncstart_fkt();
     break;
   case GMSK_SYNCSTOP:
     gmsk_demod_unlock();
-    demod_rxbitcnt = 0;
     if (demod_syncstop_fkt != NULL) demod_syncstop_fkt();
     break;
   case GMSK_FRAMESYNC:
-    demod_rxbitcnt = 0;
+    if (demod_rxbitcnt != 0) {
+      pattern = demod_rxbitcnt;
+      demod_rxbitcnt = 0;
+      if (demod_rxptr != NULL) {	// we are receiving a frame, bit bit-shifted
+	if ((demod_rxsize-pattern) < 32) {	// fi Word full
+	  *demod_rxptr = swap32(demod_shr);
+          demod_rxptr = NULL;
+	  if (demod_received_fkt != NULL) demod_received_fkt();	// process unfinished frame
+	} else demod_rxptr = NULL;	// fi saves last bits; esle don't receive anymore
+	demod_state = DEMOD_unlocked;
+      } // fi unfinished VOICE-DATA frame
+    } // fi
     if (demod_state < DEMOD_sync) gmsk_demod_sync();
     if (demod_framesync_fkt != NULL) demod_framesync_fkt();
     break;
