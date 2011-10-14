@@ -115,7 +115,7 @@
 #endif
 
 
-#define GPIO0_OVRINIT		(1<<LED_GREEN_PIN)|(1<<DACLD_PIN)|(1<<PTT_OUT_PIN)
+#define GPIO0_OVRINIT		(1<<LED_GREEN_PIN)|(1<<DACLD_PIN)
 
 
 //#define TC_A1_OUT
@@ -169,9 +169,9 @@
 
 #define V_Ref			3075	// Voltx1000
 
-#define enable_ptt()		gpio0_clr(PTT_OUT_PIN)
-#define disable_ptt()		gpio0_set(PTT_OUT_PIN)
-#define is_pttactive()		(!gpio0_readovr(PTT_OUT_PIN))
+#define enable_ptt()		gpio0_set(PTT_OUT_PIN)
+#define disable_ptt()		gpio0_clr(PTT_OUT_PIN)
+#define is_pttactive()		(gpio0_readovr(PTT_OUT_PIN))
 
 #define DEBUG_PIN1		EXP_IO21_PIN
 #define DEBUG_PIN2		EXP_IO23_PIN
