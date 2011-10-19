@@ -108,7 +108,10 @@ void	rptr_transmit_early_start(void);
 // If no data available, DVcmdRmtTXoff -> DVUP
 void	rptr_transmit_data(void);
 
-void	rptr_endtransmit(void);
+// use pkt_nr_stop:
+// 0xFF = stop if buffer runs out of voice data
+// 0 to 251 = stop after transmitting this buffer-index
+void	rptr_endtransmit(unsigned char pkt_nr_stop);
 
 // Adds a voice paket into the transmit-voice-buffer on position pkt_nr.
 // If pkt_nr is not in 0..VoiceTxBufSize, the pkt is stored as last one (newest).

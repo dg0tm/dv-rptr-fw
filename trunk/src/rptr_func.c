@@ -29,6 +29,11 @@
  * 2011-09-29  JA  silence-frame with slow-data "fff" (means 'unnused' on Icom devices)
  * 2011-10-08  JA  rptr_rx_state variable to get the TX State in a STATUS message.
  * 		   change unused function rptr_routeflags(), correct behavior, if "DIRECT" found in RPT1
+ * 2011-10-19  JA  very long gaps on PC voice now filled with silence, PTT goes off after
+ * 		   5.04s no new packed arrives from PC or EOT is received.
+ *
+ * Attention:
+ * Prevent sending 1-voice-frame like HEADER - VOICE - EOT. Minimum 2 frames!
  */
 
 
@@ -62,11 +67,9 @@ ALIGNED_DATA static const unsigned long lastframe_dstar[2] = {
 #define DSTAR_LASTFRAMEBITSIZE_TX	64	// keep modulated at END
 
 
-// AMBE-no Voice Data (just silence)
+// AMBE-no Voice Data (just silence) added with 'fff' on slow data
 ALIGNED_DATA static const unsigned long SilenceFrame[3] = {
-  0x8e4fb8b0,	// ToDo Check!
-  0xd55f2ba0,
-  0xe81629f5
+  0x8e4fb8b0, 0xd55f2ba0, 0xe81629f5
 };
 
 
@@ -99,7 +102,7 @@ unsigned int	RPTR_RxFrameCount;	// Count continously upwards
 unsigned int	RPTR_RxLastSync;	// Keeps the Number of Last-Sync
 unsigned int	RPTR_TxFrameCount;	// Count continously
 
-unsigned int	TxVoice_RdPos, TxVoice_WrPos;
+unsigned int	TxVoice_RdPos, TxVoice_WrPos, TxVoice_StopPos;
 unsigned int	DStar_LostSyncCounter;		// Zähler, wie oft pro Durchgang Sync weg
 
 
@@ -161,29 +164,32 @@ void rptr_transmit_stopframe(void) {
 
 
 void rptr_transmit_voicedata(void) {
+/*
   if (TxVoice_RdPos == TxVoice_WrPos) {	// no data left, flushed buffer!
     gmsk_transmit((U32 *)&SilenceFrame, DSTAR_VOICEFRAMEBITSIZE, 1);
     gmsk_set_reloadfunc(&rptr_transmit_stopframe);
     rptr_tx_state = RPTRTX_lastframe;
   } else {
+*/
     tds_voicedata *voicedat = &DStar_TxVoice[TxVoice_RdPos];
     // replace voice data, currently transmitting with Silence
     tds_voicedata *voicejusttxed = &DStar_TxVoice[(TxVoice_RdPos+VoiceTxBufSize-1) % VoiceTxBufSize];
     TxVoice_RdPos = (TxVoice_RdPos+1) % VoiceTxBufSize;
-    if (TxVoice_RdPos == TxVoice_WrPos) {	// last voice frame?
+    if (TxVoice_RdPos == TxVoice_StopPos) {	// EOT-position reached? -> last voice frame
       gmsk_transmit(voicedat->packet, DSTAR_VOICEFRAMEBITSIZE, 1);
       gmsk_set_reloadfunc(&rptr_transmit_stopframe);
       rptr_tx_state = RPTRTX_lastframe;
-    } else {
+    } else { // fi stop with this pkt
       gmsk_transmit(voicedat->packet, DSTAR_FRAMEBITSIZE, DSTAR_FRAMEBITSIZE-DSTAR_BEFOREFRAMEENDS);
-    }
+    } // esle norm
     // replace voice data, currently transmitting with Silence
     // DSTAR_BEFOREFRAMEENDS < 32: All bits we need for the current tx are in gmsk-buffer
     memcpy(voicejusttxed, SilenceFrame, sizeof(tds_voicedata));
     RPTR_TxFrameCount++;
     rptr_tx_state = RPTRTX_voicedata;
-  }
+//  }
 }
+
 
 
 void rptr_transmit_testloop(void) {	// Looping Transmit RXVoice Buffer
@@ -206,8 +212,11 @@ void rptr_transmit_header(void) {
     gmsk_set_reloadfunc(rptr_transmit_testloop);
   else
     gmsk_set_reloadfunc(rptr_transmit_voicedata);
+  TxVoice_StopPos = 0;
+  TxVoice_RdPos = 0;
   rptr_tx_state = RPTRTX_header;
 }
+
 
 
 void rptr_restart_header(void) {
@@ -477,7 +486,6 @@ void rptr_transmit(void) {
   if (is_pttactive()) {
     if (RPTR_is_set(RPTR_TX_EARLYPTT)) {
       RPTR_clear(RPTR_TX_EARLYPTT);
-      TxVoice_RdPos = 0;
       TxVoice_WrPos = 0;
       gmsk_set_reloadfunc(&rptr_transmit_header); // Header aussenden
       rptr_tx_state = RPTRTX_preamble;
@@ -485,7 +493,6 @@ void rptr_transmit(void) {
       gmsk_set_reloadfunc(&rptr_break_current);	// unmittelbar Header hinter EOT
     }
   } else {
-    TxVoice_RdPos = 0;
     TxVoice_WrPos = 0;
     enable_ptt();
     gmsk_set_reloadfunc(&rptr_transmit_header);	// unmittelbar Header hinter
@@ -506,8 +513,11 @@ void rptr_transmit_early_start(void) {
 }
 
 
-void rptr_endtransmit(void) {
-
+void rptr_endtransmit(unsigned char pkt_nr_stop) {
+  if (pkt_nr_stop < VoiceTxBufSize)
+    TxVoice_StopPos = pkt_nr_stop;
+  else
+    TxVoice_StopPos = (TxVoice_WrPos+1) % VoiceTxBufSize;
 }
 
 
@@ -548,12 +558,14 @@ void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
       TxVoice_WrPos = (pkt_nr+1) % VoiceTxBufSize;
     }
   } // esle with gaps
+  TxVoice_StopPos = TxVoice_RdPos;	// update stop-position, long-gap silence
 }
 
 
 __inline unsigned char rptr_get_unsend(void) {
   return (TxVoice_WrPos+VoiceTxBufSize-TxVoice_RdPos) % VoiceTxBufSize;
 }
+
 
 
 //! @}
