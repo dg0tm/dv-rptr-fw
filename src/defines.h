@@ -27,7 +27,7 @@
 #ifndef DEFINES_H_
 #define DEFINES_H_
 
-#define FIRMWAREVERSION		0x0410
+#define FIRMWAREVERSION		0x0420
 
 // Version Vxx.yy (last digit is char ' ', a, b...)
 
@@ -70,7 +70,7 @@ typedef void (*tfunction)(void);	// void-void Functions generell
 // Serial (RS232) and USB-CDC (serial link) uses frame-based I/O beginning
 // with a start-identification
 #define FRAMESTARTID	0xD0		// RS232-Paket-Startzeichen
-#define PAKETBUFFERSIZE	(512+8)		// Maximum Size per Frame we can receive
+#define PAKETBUFFERSIZE	(12+(21*12))	// Maximum Size per Frame we can receive
 
 // Returncodes (first data in answer)
 #define NAK			0x15

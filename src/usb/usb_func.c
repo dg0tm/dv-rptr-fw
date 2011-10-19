@@ -261,7 +261,7 @@ unsigned char cdc_look_byte(int pos) {
 
 unsigned short cdc_look_leword(int pos) {
   U16 result;
-  result = (cdc_rxbuffer[(cdc_rdpos+pos+1) % CDC_RXBUFFERSIZE] << 16) | \
+  result = ( cdc_rxbuffer[(cdc_rdpos+pos+1) % CDC_RXBUFFERSIZE] << 8) | \
       cdc_rxbuffer[(cdc_rdpos+pos) % CDC_RXBUFFERSIZE];
   return result;
 }
