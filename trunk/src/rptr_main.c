@@ -59,6 +59,7 @@
  * 		     new RSSI per frame feature returns a unsigned(16) value (4.85V = max = 1023).
  * 2011-10-11 V0.40a fixing memory overflow on weak signals, if a sync-pattern detected
  * 2011-10-19 V0.41  transmitting logic changed: see rptr_func.c
+ * 2011-10-19 V0.42  Multi-Voice-Frame support
  *
  * ToDo:
  * - PC watchdog
@@ -155,8 +156,9 @@ typedef enum {
 
 // *** Globale Variablen ***
 
-U8		status_control =  STA_NOCONFIG_MASK|STA_CANDUPLEX_MASK;	// Holds persitent control-flags
+U8		status_control  = STA_NOCONFIG_MASK|STA_CANDUPLEX_MASK;	// Holds persitent control-flags
 U8		status_state;	// Holds state of RX/TX
+U8		current_txid    = 0;
 
 // functions used for pc/gateway communication:
 // pre-initialisation to USB-CDC, but easy reconfigurable to RS232
@@ -165,7 +167,7 @@ tdata_cpy_rx	data_copyrx	= cdc_copyblock;
 tdata_tx_fct	data_transmit	= cdc_transmit;
 tfunction	data_flushrx	= cdc_flushrx;
 
-#define DATA_TIMEOUT_MS		5	// 5ms time left for handle incoming data
+#define DATA_TIMEOUT_MS		5	// 5ms time gap allowed for incoming data
 
 void data_timeout(int rx_length) {
   data_flushrx();		// simple flush buffer!
@@ -366,6 +368,29 @@ void handle_special_func_cmd(int len) {
 }
 
 
+__inline void add_multi_voice_2_rptr(int len) {
+  unsigned int pkt_cnt = (len-7) / sizeof(tds_voicedata);
+  if (pkt_cnt == 1) {		// normal case - handle separated / optimized
+#ifdef PLAIN_SLOWDATA		// scramble data (if was plain)
+    dstar_scramble_data((tds_voicedata *)&rxdatapacket.data[PKT_PARAM_IDX+4]);
+#endif
+    // keep 2 bytes for future use, keep layout identical to RX
+    rptr_addtxvoice((tds_voicedata *)&rxdatapacket.data[PKT_PARAM_IDX+4],
+      rxdatapacket.data[PKT_PARAM_IDX+1]);
+  } else if ((pkt_cnt > 1) && (pkt_cnt <= DSTAR_SYNCINTERVAL)) {
+    unsigned char pktnr = rxdatapacket.data[PKT_PARAM_IDX+1];
+    tds_voicedata *voicedata = (tds_voicedata *)&rxdatapacket.data[PKT_PARAM_IDX+4];
+    for ( ; pkt_cnt > 0; pkt_cnt--) {
+  #ifdef PLAIN_SLOWDATA		// scramble data (if was plain)
+      dstar_scramble_data(voicedata);
+  #endif
+      rptr_addtxvoice(voicedata, pktnr);
+      voicedata++;
+      pktnr = (pktnr+1) % VoiceTxBufSize;
+    } // rof
+  } else pc_send_byte(NAK);
+}
+
 
 // handle_serial_paket()
 // verarbeitet "paket" mit len optionalen Daten (Header NICHT mitgerechnet).
@@ -436,41 +461,42 @@ __inline void handle_pc_paket(int len) {
     if (config_setup(rxdatapacket.data+PKT_PARAM_IDX, len-1)) {
       pc_send_byte(ACK);
     } else {
-
+      pc_send_byte(NAK);
     }
     break;
   case RPTR_START:		// early Turn-On xmitter, if configured a long TXD
-    if (status_control & STA_TXENABLE_MASK)
+    if ((status_control & STA_TXENABLE_MASK) && (len==3)) {
       rptr_transmit_early_start(); // PTTon, only if TXD > Header-TX-Lengh 137.5ms
-    else
+      current_txid = rxdatapacket.data[PKT_PARAM_IDX];
+    } else
       pc_send_byte(NAK);
     break;
   case RPTR_HEADER:		// start transmitting TXDelay-Preamble-Start-Header
-    if (status_control & STA_TXENABLE_MASK)
+    if (status_control & STA_TXENABLE_MASK) {
       rptr_transmit();		// Turn on Xmitter
-    else
+      current_txid = rxdatapacket.data[PKT_PARAM_IDX];
+    } else
       pc_send_byte(NAK);
     // keep 2 bytes for future use, keep layout identical to RX
     rptr_init_header((tds_header *)&rxdatapacket.data[PKT_PARAM_IDX+4]);
     break;
   case RPTR_RXSYNC:		// start transmitting TXDelay-Preamble-Start-Header
     if (status_control & STA_TXENABLE_MASK) {
-      if (!is_pttactive()) rptr_transmit();	// Turn on Xmitter only if PTT off
+      if (!is_pttactive()) {
+	rptr_transmit();	// Turn on Xmitter only if PTT off
+	current_txid = rxdatapacket.data[PKT_PARAM_IDX];
+      } // if idle
       // (transmission use last header)
     } else
       pc_send_byte(NAK);
     break;
   case RPTR_DATA:		// transmit data (voice and slowdata or sync)
-#ifdef PLAIN_SLOWDATA		// scramble data (if was plain)
-    dstar_scramble_data((tds_voicedata *)&rxdatapacket.data[PKT_PARAM_IDX+4]);
-#endif
-    // keep 2 bytes for future use, keep layout identical to RX
-    rptr_addtxvoice((tds_voicedata *)&rxdatapacket.data[PKT_PARAM_IDX+4],
-      rxdatapacket.data[PKT_PARAM_IDX+1]);
+    if (rxdatapacket.data[PKT_PARAM_IDX] == current_txid)
+      add_multi_voice_2_rptr(len);
     break;
   case RPTR_EOT:		// end transmission with EOT tail
     if (len == 3) {
-//      if (rxdatapacket.data[PKT_PARAM_IDX] == id)	// compare IDs later
+      if (rxdatapacket.data[PKT_PARAM_IDX] == current_txid)
         rptr_endtransmit(rxdatapacket.data[PKT_PARAM_IDX+1]);
     } else
       rptr_endtransmit(0xFF);	// stop after buffer is empty
@@ -675,7 +701,7 @@ int main(void) {
   rptr_init_hardware();
   usb_init();				// Enable VBUS-Check
 
-  cdc_enabletimeout(data_timeout, DATA_TIMEOUT_MS);
+//  cdc_enabletimeout(data_timeout, DATA_TIMEOUT_MS);
 
   // *** initializing constant parts of I/O structures ***
 

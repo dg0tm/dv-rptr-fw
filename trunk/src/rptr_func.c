@@ -546,7 +546,7 @@ void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
 //    dstar_scramble_data(new_data);		// scramble data (was plain)
 #endif
   } // esle
-  if (pkt_nr == TxVoice_WrPos) {		// expected paket from PC...
+  if (pkt_nr == TxVoice_WrPos) {		// expected packet from PC...
     TxVoice_WrPos = (TxVoice_WrPos+1) % VoiceTxBufSize;
   } else {		// unsorted packet - expand transmit window to pkt_nr
     // a numbered packet in the empty buffer area results in an update of WrPos
