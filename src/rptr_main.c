@@ -58,7 +58,7 @@
  * 2011-10-08 V0.40  add TX Status (enum see rptr_func.h) in GETSTATUS message
  * 		     new RSSI per frame feature returns a unsigned(16) value (4.85V = max = 1023).
  * 2011-10-11 V0.40a fixing memory overflow on weak signals, if a sync-pattern detected
- *
+ * 2011-10-19 V0.41  transmitting logic changed: see rptr_func.c
  *
  * ToDo:
  * - PC watchdog
@@ -469,7 +469,11 @@ __inline void handle_pc_paket(int len) {
       rxdatapacket.data[PKT_PARAM_IDX+1]);
     break;
   case RPTR_EOT:		// end transmission with EOT tail
-    rptr_endtransmit();
+    if (len == 3) {
+//      if (rxdatapacket.data[PKT_PARAM_IDX] == id)	// compare IDs later
+        rptr_endtransmit(rxdatapacket.data[PKT_PARAM_IDX+1]);
+    } else
+      rptr_endtransmit(0xFF);	// stop after buffer is empty
     break;
   case RPTR_SET_SPECIALFUNCT:
     handle_special_func_cmd(len);
