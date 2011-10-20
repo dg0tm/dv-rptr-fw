@@ -473,12 +473,16 @@ __inline void handle_pc_paket(int len) {
     break;
   case RPTR_HEADER:		// start transmitting TXDelay-Preamble-Start-Header
     if (status_control & STA_TXENABLE_MASK) {
-      rptr_transmit();		// Turn on Xmitter
-      current_txid = rxdatapacket.data[PKT_PARAM_IDX];
+      if ( (rxdatapacket.data[PKT_PARAM_IDX] != current_txid) || (!is_pttactive()) ) {
+        rptr_transmit();		// Turn on Xmitter
+        current_txid = rxdatapacket.data[PKT_PARAM_IDX];
+      } // fi
+      // -> ignore a HEADER msg with same TXID while sending
     } else
       pc_send_byte(NAK);
     // keep 2 bytes for future use, keep layout identical to RX
-    rptr_init_header((tds_header *)&rxdatapacket.data[PKT_PARAM_IDX+4]);
+    if (rptr_tx_state != RPTRTX_header)	// update only, if not transmitting just this moment
+      rptr_init_header((tds_header *)&rxdatapacket.data[PKT_PARAM_IDX+4]);
     break;
   case RPTR_RXSYNC:		// start transmitting TXDelay-Preamble-Start-Header
     if (status_control & STA_TXENABLE_MASK) {
@@ -613,6 +617,7 @@ void handle_hfdata(void) {
     if (RPTR_is_set(RPTR_RX_STOP)) {
       RPTR_clear(RPTR_RX_STOP);
       ctrldata.head.cmd = RPTR_EOT;
+      ctrldata.rsvd     = voicedata.pktcount;
       append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
       data_transmit((char *)&ctrldata, sizeof(ctrldata));
       transmission = false;
@@ -620,6 +625,7 @@ void handle_hfdata(void) {
     if (RPTR_is_set(RPTR_RX_LOST)) {
       RPTR_clear(RPTR_RX_LOST);
       ctrldata.head.cmd = RPTR_RXLOST;
+      ctrldata.rsvd     = voicedata.pktcount;
       append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
       data_transmit((char *)&ctrldata, sizeof(ctrldata));
       transmission = false;

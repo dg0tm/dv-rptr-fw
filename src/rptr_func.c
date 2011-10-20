@@ -226,6 +226,7 @@ void rptr_restart_header(void) {
 }
 
 
+
 void rptr_begin_new_tx(void) {
   rptr_tx_stop();
   gmsk_set_reloadfunc(rptr_restart_header);
@@ -233,13 +234,10 @@ void rptr_begin_new_tx(void) {
 
 
 void rptr_break_current(void) {
-  if (TxVoice_RdPos == TxVoice_WrPos) {	// last voice frame?
-    gmsk_transmit((U32 *)&SilenceFrame, DSTAR_VOICEFRAMEBITSIZE, 1);
-  } else {
-    gmsk_transmit(DStar_TxVoice[TxVoice_RdPos].packet, DSTAR_VOICEFRAMEBITSIZE, 1);
-  }
+  gmsk_transmit(DStar_TxVoice[TxVoice_RdPos].packet, DSTAR_VOICEFRAMEBITSIZE, 1);
   gmsk_set_reloadfunc(rptr_begin_new_tx);
 }
+
 
 
 #define DSTAR_SYNC		0x00552D16
@@ -483,19 +481,23 @@ void rptr_transmit(void) {
 #if (DVTX_TIMER_CH==IDLE_TIMER_CH)
   idle_timer_stop();
 #endif
-  if (is_pttactive()) {
-    if (RPTR_is_set(RPTR_TX_EARLYPTT)) {
-      RPTR_clear(RPTR_TX_EARLYPTT);
+  if (is_pttactive()) {		// DV-RPTR is transmitting, restart it
+    if (rptr_tx_state == RPTRTX_voicedata) {
+      gmsk_set_reloadfunc(rptr_break_current);	// unmittelbar Header hinter EOT
       TxVoice_WrPos = 0;
-      gmsk_set_reloadfunc(&rptr_transmit_header); // Header aussenden
+    } else if (rptr_tx_state == RPTRTX_lastframe) {
+      gmsk_set_reloadfunc(rptr_begin_new_tx);
+      TxVoice_WrPos = 0;
+    } else if (RPTR_is_set(RPTR_TX_EARLYPTT)) {
+      RPTR_clear(RPTR_TX_EARLYPTT);
+      gmsk_set_reloadfunc(rptr_transmit_header); // Header aussenden
       rptr_tx_state = RPTRTX_preamble;
-    } else {
-      gmsk_set_reloadfunc(&rptr_break_current);	// unmittelbar Header hinter EOT
-    }
+      TxVoice_WrPos = 0;
+    } // esle fi
   } else {
     TxVoice_WrPos = 0;
     enable_ptt();
-    gmsk_set_reloadfunc(&rptr_transmit_header);	// unmittelbar Header hinter
+    gmsk_set_reloadfunc(rptr_transmit_header);	// unmittelbar Header hinter
     rptr_tx_preamble();				// die Preamble setzen
     rptr_tx_state = RPTRTX_preamble;
   }
@@ -506,7 +508,7 @@ void rptr_transmit_early_start(void) {
   if ((gmsk_get_txdelay() > 138)&&(!is_pttactive())) {
     RPTR_Flags |= RPTR_TX_EARLYPTT;
     enable_ptt();
-    gmsk_set_reloadfunc(&rptr_transmit_stopframe);	// kill TX, if no header adds
+    gmsk_set_reloadfunc(rptr_transmit_stopframe);	// kill TX, if no header adds
     rptr_tx_preamble();
     rptr_tx_state = RPTRTX_txdelay;
   }
