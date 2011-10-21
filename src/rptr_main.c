@@ -466,8 +466,8 @@ __inline void handle_pc_paket(int len) {
     break;
   case RPTR_START:		// early Turn-On xmitter, if configured a long TXD
     if ((status_control & STA_TXENABLE_MASK) && (len==3)) {
-      rptr_transmit_early_start(); // PTTon, only if TXD > Header-TX-Lengh 137.5ms
-      current_txid = rxdatapacket.data[PKT_PARAM_IDX];
+      if (rxdatapacket.data[PKT_PARAM_IDX] != current_txid)
+        rptr_transmit_early_start(); // PTTon, only if TXD > Header-TX-Lengh 137.5ms
     } else
       pc_send_byte(NAK);
     break;
