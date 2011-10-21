@@ -31,6 +31,7 @@
  * 		   change unused function rptr_routeflags(), correct behavior, if "DIRECT" found in RPT1
  * 2011-10-19  JA  very long gaps on PC voice now filled with silence, PTT goes off after
  * 		   5.04s no new packed arrives from PC or EOT is received.
+ * 2011-10-21  JA  transition from EOT to a new header is now w/o DC - use SYNC pattern instead
  *
  * Attention:
  * Prevent sending 1-voice-frame like HEADER - VOICE - EOT. Minimum 2 frames!
@@ -130,13 +131,6 @@ __inline void rptr_tx_preamble(void) {
 }
 
 
-__inline void rptr_tx_stop(void) {
-  gmsk_transmit((U32 *)lastframe_dstar, DSTAR_LASTFRAMEBITSIZE_TX, DSTAR_LASTFRAMEBITSIZE_TX-2);
-  rptr_tx_state = RPTRTX_eot;
-}
-
-
-
 
 /*! \name RPTR Handler Functions
  */
@@ -157,8 +151,9 @@ void rptr_stopped(void) {
 // rptr_transmit_stopframe() append a END-OF-TRANSMISSION id after voice data (no slowdata)
 // after transmission, rptr_stopped() is called back from gmsk module.
 void rptr_transmit_stopframe(void) {
-  rptr_tx_stop();
+  gmsk_transmit((U32 *)lastframe_dstar, DSTAR_LASTFRAMEBITSIZE_TX, DSTAR_LASTFRAMEBITSIZE_TX-2);
   gmsk_set_reloadfunc(&rptr_stopped);
+  rptr_tx_state = RPTRTX_eot;
   RPTR_clear(RPTR_TX_EARLYPTT);		// If PTT active from EarlySTART
 }
 
@@ -208,34 +203,36 @@ void rptr_transmit_testloop(void) {	// Looping Transmit RXVoice Buffer
 void rptr_transmit_header(void) {
   gmsk_transmit((U32 *)&DStar_HeaderBS, DSTAR_HEADEROUTBITSIZE, DSTAR_HEADEROUTBITSIZE-DSTAR_BEFOREFRAMEENDS);
   RPTR_TxFrameCount = 0;
+  TxVoice_StopPos   = 0;
+  TxVoice_RdPos     = 0;
   if (RPTR_is_set(RPTR_TX_TESTLOOP))
     gmsk_set_reloadfunc(rptr_transmit_testloop);
   else
     gmsk_set_reloadfunc(rptr_transmit_voicedata);
-  TxVoice_StopPos = 0;
-  TxVoice_RdPos = 0;
   rptr_tx_state = RPTRTX_header;
 }
 
 
 
 void rptr_restart_header(void) {
-  gmsk_transmit((U32 *)&preamble_dstar[4], 15, 1);
+  gmsk_transmit((U32 *)&preamble_dstar[3], 32+15, 1);
   gmsk_set_reloadfunc(rptr_transmit_header);		// unmittelbar Header hinter
   rptr_tx_state = RPTRTX_preamble;
 }
 
 
-
 void rptr_begin_new_tx(void) {
-  rptr_tx_stop();
   gmsk_set_reloadfunc(rptr_restart_header);
+  gmsk_transmit((U32 *)lastframe_dstar, DSTAR_LASTFRAMEBITSIZE, 1);
 }
 
 
 void rptr_break_current(void) {
-  gmsk_transmit(DStar_TxVoice[TxVoice_RdPos].packet, DSTAR_VOICEFRAMEBITSIZE, 1);
   gmsk_set_reloadfunc(rptr_begin_new_tx);
+  gmsk_transmit(DStar_TxVoice[TxVoice_RdPos].packet, DSTAR_VOICEFRAMEBITSIZE, 1);
+  // clear last txed voice, like in rptr_transmit_voicedata()
+  memcpy(&DStar_TxVoice[(TxVoice_RdPos+VoiceTxBufSize-1) % VoiceTxBufSize], SilenceFrame, sizeof(tds_voicedata));
+  rptr_tx_state = RPTRTX_lastframe;
 }
 
 
