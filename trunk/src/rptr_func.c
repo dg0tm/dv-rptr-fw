@@ -87,8 +87,8 @@ trptr_tx_state 	rptr_tx_state;
 
 tds_header DSTAR_HEADER = {		// actual header for tx in decoded form
   flags:{0x00, 0x00, 0x00},
-  RPT2Call:"       B",
-  RPT1Call:"       G",
+  RPT2Call:"DIRECT B",
+  RPT1Call:"DIRECT G",
   YourCall:"CQCQCQ  ",
   MyCall  :"no Call ",
   MyCall2 :"RPTR",
@@ -387,17 +387,22 @@ void rptr_routeflags(void) {
   char *rr1 = DSTAR_HEADER.RPT1Call;
   int cnt, filled;
   filled = memcmp(rr1, "DIRECT", 6);		// no "DIRECT" text is in RPT1 -> use PTR
-  if (filled!=0) for (cnt=0; cnt<8; cnt++) {	// test for valid ASCII-Chars
-    if ((*rr1 > 0x20) && (*rr1 < 0x80)) {	// if some text found, use PTR
-      filled++;
-      break;
+  if (filled!=0) {
+    filled = 0;
+    for (cnt=0; cnt<8; cnt++) {			// test for valid ASCII-Chars
+      if ((*rr1 > 0x20) && (*rr1 < 0x80)) {	// if some text found, use PTR
+	filled++;
+	break;
+      }
+      rr1++;
     }
-    rr1++;
   }
   if (filled)
     DSTAR_HEADER.flags[0] |= FLAG0_USERPT_MASK;
-  else
+  else {
     DSTAR_HEADER.flags[0] &= ~FLAG0_USERPT_MASK;
+    memcpy(DSTAR_HEADER.RPT2Call, "DIRECT  DIRECT  ", 16);
+  }
 }
 
 
@@ -498,9 +503,7 @@ void rptr_transmit(void) {
     } else {
       gmsk_set_reloadfunc(rptr_transmit_start);	// change from preamble to header
     } // esle fi
-    TxVoice_WrPos = 0;
   } else {
-    TxVoice_WrPos = 0;
     enable_ptt();
     gmsk_set_reloadfunc(rptr_transmit_header);	// after TXed peamble + START-pattern, load header
     gmsk_transmit((U32 *)preamble_dstar, DSTAR_PREAMPLELEN, 1);
@@ -508,6 +511,7 @@ void rptr_transmit(void) {
     LED_Set(LED_RED);
     rptr_tx_state = RPTRTX_preamble;
   }
+  TxVoice_WrPos = 0;
 }
 
 
