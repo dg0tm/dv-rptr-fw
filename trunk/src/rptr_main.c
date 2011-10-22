@@ -458,7 +458,7 @@ __inline void handle_pc_paket(int len) {
     break;
   case RPTR_RXSYNC:		// start transmitting TXDelay-Preamble-Start-Header
     if (status_control & STA_TXENABLE_MASK) {
-      if (!is_pttactive()) {
+      if ((rptr_tx_state <= RPTRTX_preamble) || (rxdatapacket.data[PKT_PARAM_IDX] != current_txid)) {
 	rptr_transmit();	// Turn on Xmitter only if PTT off
 	current_txid = rxdatapacket.data[PKT_PARAM_IDX];
       } // if idle
