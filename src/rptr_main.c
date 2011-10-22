@@ -160,7 +160,7 @@ typedef enum {
 
 U8		status_control  = STA_NOCONFIG_MASK|STA_CANDUPLEX_MASK;	// Holds persitent control-flags
 U8		status_state;	// Holds state of RX/TX
-U8		current_txid    = 0;
+U8		current_txid;
 
 // functions used for pc/gateway communication:
 // pre-initialisation to USB-CDC, but easy reconfigurable to RS232
@@ -444,6 +444,8 @@ __inline void handle_pc_paket(int len) {
       pc_send_byte(NAK);
     break;
   case RPTR_HEADER:		// start transmitting TXDelay-Preamble-Start-Header
+    if (rptr_tx_state != RPTRTX_header)	// update only, if not transmitting just this moment
+      rptr_init_header((tds_header *)&rxdatapacket.data[PKT_PARAM_IDX+4]);
     if (status_control & STA_TXENABLE_MASK) {
       if ((rptr_tx_state <= RPTRTX_preamble) || (rxdatapacket.data[PKT_PARAM_IDX] != current_txid)) {
         rptr_transmit();		// Turn on Xmitter
@@ -453,8 +455,6 @@ __inline void handle_pc_paket(int len) {
     } else
       pc_send_byte(NAK);
     // keep 2 bytes for future use, keep layout identical to RX
-    if (rptr_tx_state != RPTRTX_header)	// update only, if not transmitting just this moment
-      rptr_init_header((tds_header *)&rxdatapacket.data[PKT_PARAM_IDX+4]);
     break;
   case RPTR_RXSYNC:		// start transmitting TXDelay-Preamble-Start-Header
     if (status_control & STA_TXENABLE_MASK) {
