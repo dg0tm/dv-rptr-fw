@@ -51,8 +51,8 @@ extern unsigned int RPTR_Flags;
 #define RPTR_RECEIVING		0x80	// permanent indicator, don't clear flag
 
 // Transmit Flags Bit 8..15
-#define RPTR_TX_EARLYPTT	0x0100
-#define RPTR_TX_TESTLOOP	0x4000
+#define RPTR_TX_EMPTY		0x0100
+
 #define RPTR_TRANSMITTING	0x8000	// permanent indicator, don't clear flag
 
 #define RPTR_is_set(f)		(RPTR_Flags&f)
@@ -95,13 +95,16 @@ void	rptr_clr_emergency(void);
 
 void	rptr_receive(void);
 
+// In the case of long TXD, you can turn on PTT before you can send a valid
+// header. Until a transmission (rptr_transmit() call) starts, a preamble pattern will
+// output on TXout after the configured TX-delay
+// a timeout of 420ms disables PTT, if no rptr_transdmit() called
+void	rptr_transmit_preamble(void);
+
 // Enable Voice-Tranmitting, starts with tx-delay, preamble and header
 // Transmit 60 Bytes between 2 sync cycles (set with "setSlowData()")
 void	rptr_transmit(void);
 
-// In the case of long TXD, you can turn on PTT before you can send a valid
-// header. The configured TXD must be >138ms (660bit haeder need 137.5ms on air)
-void	rptr_transmit_early_start(void);
 
 // Enable Silence-Tranmitting, starts with tx-delay, preamble and header
 // Transmit 60 Bytes between 2 sync cycles (set with "setSlowData()")
@@ -123,6 +126,10 @@ char	*rptr_getheader(void);
 
 unsigned char rptr_copycurrentrxvoice(tds_voicedata *dest);
 void	rptr_copyrxvoice(tds_voicedata *dest, unsigned char nr);
+
+// force to check the first SYNC-pattern in the voicedata just after header.
+// if no pattern detected, stop RX + set LOST flag
+void	rptr_forcefirstsync(void);
 
 
 #endif // DSTAR_FUNC_H_

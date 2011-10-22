@@ -55,11 +55,15 @@
 #include <string.h>
 
 
+#define RPTR_PREAMBLE_TO	DSTAR_SYNCINTERVAL	// value in 20ms
+
+
 ALIGNED_DATA static const unsigned long preamble_dstar[5] = {
   0x55555555, 0x55555555,
   0x55555555, 0x55555555,
   0x37050000
 };
+#define DSTAR_PREAMPLELEN	(2*64+15)
 
 ALIGNED_DATA static const unsigned long lastframe_dstar[2] = {
   0x55555555,
@@ -124,14 +128,6 @@ __inline void dstar_scramble_data(tds_voicedata *dest) {
 
 
 
-__inline void rptr_tx_preamble(void) {
-  gmsk_transmit((U32 *)preamble_dstar, DSTAR_PREAMPLELEN, 1);
-  RPTR_Flags |= RPTR_TRANSMITTING;
-  LED_Set(LED_RED);
-}
-
-
-
 /*! \name RPTR Handler Functions
  */
 //! @{
@@ -154,50 +150,29 @@ void rptr_transmit_stopframe(void) {
   gmsk_transmit((U32 *)lastframe_dstar, DSTAR_LASTFRAMEBITSIZE_TX, DSTAR_LASTFRAMEBITSIZE_TX-2);
   gmsk_set_reloadfunc(&rptr_stopped);
   rptr_tx_state = RPTRTX_eot;
-  RPTR_clear(RPTR_TX_EARLYPTT);		// If PTT active from EarlySTART
 }
 
 
 void rptr_transmit_voicedata(void) {
-/*
-  if (TxVoice_RdPos == TxVoice_WrPos) {	// no data left, flushed buffer!
-    gmsk_transmit((U32 *)&SilenceFrame, DSTAR_VOICEFRAMEBITSIZE, 1);
+  tds_voicedata *voicedat = &DStar_TxVoice[TxVoice_RdPos];
+  // replace voice data, currently transmitting with Silence
+  tds_voicedata *voicejusttxed = &DStar_TxVoice[(TxVoice_RdPos+VoiceTxBufSize-1) % VoiceTxBufSize];
+  TxVoice_RdPos = (TxVoice_RdPos+1) % VoiceTxBufSize;
+  if (TxVoice_RdPos == TxVoice_StopPos) {	// EOT-position reached? -> last voice frame
+    gmsk_transmit(voicedat->packet, DSTAR_VOICEFRAMEBITSIZE, 1);
     gmsk_set_reloadfunc(&rptr_transmit_stopframe);
     rptr_tx_state = RPTRTX_lastframe;
-  } else {
-*/
-    tds_voicedata *voicedat = &DStar_TxVoice[TxVoice_RdPos];
-    // replace voice data, currently transmitting with Silence
-    tds_voicedata *voicejusttxed = &DStar_TxVoice[(TxVoice_RdPos+VoiceTxBufSize-1) % VoiceTxBufSize];
-    TxVoice_RdPos = (TxVoice_RdPos+1) % VoiceTxBufSize;
-    if (TxVoice_RdPos == TxVoice_StopPos) {	// EOT-position reached? -> last voice frame
-      gmsk_transmit(voicedat->packet, DSTAR_VOICEFRAMEBITSIZE, 1);
-      gmsk_set_reloadfunc(&rptr_transmit_stopframe);
-      rptr_tx_state = RPTRTX_lastframe;
-    } else { // fi stop with this pkt
-      gmsk_transmit(voicedat->packet, DSTAR_FRAMEBITSIZE, DSTAR_FRAMEBITSIZE-DSTAR_BEFOREFRAMEENDS);
-    } // esle norm
-    // replace voice data, currently transmitting with Silence
-    // DSTAR_BEFOREFRAMEENDS < 32: All bits we need for the current tx are in gmsk-buffer
-    memcpy(voicejusttxed, SilenceFrame, sizeof(tds_voicedata));
-    RPTR_TxFrameCount++;
-    rptr_tx_state = RPTRTX_voicedata;
-//  }
-}
-
-
-
-void rptr_transmit_testloop(void) {	// Looping Transmit RXVoice Buffer
-  if (RPTR_is_set(RPTR_TX_TESTLOOP)) {
-    tds_voicedata *voicedat = &DStar_RxVoice[TxVoice_RdPos];
+  } else { // fi stop with this pkt
     gmsk_transmit(voicedat->packet, DSTAR_FRAMEBITSIZE, DSTAR_FRAMEBITSIZE-DSTAR_BEFOREFRAMEENDS);
-    TxVoice_RdPos = (TxVoice_RdPos+1) % VoiceRxBufSize;
-  } else {
-    gmsk_transmit((U32 *)&SilenceFrame, DSTAR_VOICEFRAMEBITSIZE, 1);
-    gmsk_set_reloadfunc(rptr_transmit_stopframe);
-  }
+    rptr_tx_state = RPTRTX_voicedata;
+    if (TxVoice_RdPos == TxVoice_WrPos)
+      RPTR_set(RPTR_TX_EMPTY);
+  } // esle norm
+  // replace voice data, currently transmitting with Silence
+  // DSTAR_BEFOREFRAMEENDS < 32: All bits we need for the current tx are in gmsk-buffer
+  memcpy(voicejusttxed, SilenceFrame, sizeof(tds_voicedata));
+  RPTR_TxFrameCount++;
 }
-
 
 
 void rptr_transmit_header(void) {
@@ -205,13 +180,9 @@ void rptr_transmit_header(void) {
   RPTR_TxFrameCount = 0;
   TxVoice_StopPos   = 0;
   TxVoice_RdPos     = 0;
-  if (RPTR_is_set(RPTR_TX_TESTLOOP))
-    gmsk_set_reloadfunc(rptr_transmit_testloop);
-  else
-    gmsk_set_reloadfunc(rptr_transmit_voicedata);
+  gmsk_set_reloadfunc(rptr_transmit_voicedata);
   rptr_tx_state = RPTRTX_header;
 }
-
 
 
 void rptr_restart_header(void) {
@@ -237,6 +208,32 @@ void rptr_break_current(void) {
 
 
 
+void rptr_preamble(void) {
+  if (TxVoice_RdPos < (3*RPTR_PREAMBLE_TO)) {	// max 420ms before shutdown
+    gmsk_transmit((U32 *)preamble_dstar, 32, 16);
+    TxVoice_RdPos++;
+    rptr_tx_state = RPTRTX_preamble;
+  } else {
+    rptr_stopped();
+  }
+}
+
+
+void rptr_transmit_start(void) {
+  gmsk_set_reloadfunc(rptr_transmit_header);
+  if (TxVoice_RdPos > 4)
+    TxVoice_RdPos = 4;
+  // transmitting a minimum of 128bits preamble plus START pattern (15bits)
+  gmsk_transmit((U32 *)&preamble_dstar[TxVoice_RdPos], DSTAR_PREAMPLELEN-(TxVoice_RdPos*32), 1);
+  rptr_tx_state = RPTRTX_preamble;
+}
+
+
+
+
+// *** receiving handler functions ***
+
+
 #define DSTAR_SYNC		0x00552D16
 #define DSTAR_SYNCMSK		0x00FFFFFF
 
@@ -260,7 +257,6 @@ __inline int rptr_is_syncpaket(U8 index) {
   } else {
     return true;
   }
-//  return ((DStar_RxVoice[index].packet[2]&DSTAR_SYNCMSK) == DSTAR_SYNC);
 }
 
 
@@ -353,7 +349,7 @@ void rptr_gotstopframe(void) {
 //! @{
 
 
-// *** API Funktionen ***
+// *** API functions ***
 
 void rptr_update_header() {
   append_crc_ccitt_revers((char *)&DSTAR_HEADER, sizeof(tds_header));
@@ -455,7 +451,7 @@ void rptr_receive(void) {
 }
 
 
-char *rptr_getheader(void) {
+__inline char *rptr_getheader(void) {
   return (char *)DStar_RxHeader;
 }
 
@@ -472,48 +468,56 @@ void rptr_copyrxvoice(tds_voicedata *dest, unsigned char nr) {
 }
 
 
+__inline void rptr_forcefirstsync(void) {
+  RPTR_RxLastSync = -RPTR_MAX_PKT_WO_SYNC;
+}
+
+
+void rptr_transmit_preamble(void) {
+  if (!is_pttactive()) {
+    enable_ptt();
+    TxVoice_RdPos = 0;				// counts timeout of preamble loop
+    gmsk_set_reloadfunc(rptr_preamble);		// transmit preamble, until rptr_transmit() or timeout
+    gmsk_transmit((U32 *)preamble_dstar, 32, 1);
+    RPTR_Flags |= RPTR_TRANSMITTING;
+    LED_Set(LED_RED);
+    rptr_tx_state = RPTRTX_txdelay;
+  } // fi transmitter OFF
+}
 
 
 void rptr_transmit(void) {
 #if (DVTX_TIMER_CH==IDLE_TIMER_CH)
   idle_timer_stop();
 #endif
-  if (is_pttactive()) {		// DV-RPTR is transmitting, restart it
+  if (is_pttactive()) {				// DV-RPTR is transmitting, restart it
     if (rptr_tx_state == RPTRTX_voicedata) {
       gmsk_set_reloadfunc(rptr_break_current);	// unmittelbar Header hinter EOT
-      TxVoice_WrPos = 0;
     } else if (rptr_tx_state == RPTRTX_lastframe) {
       gmsk_set_reloadfunc(rptr_begin_new_tx);
-      TxVoice_WrPos = 0;
-    } else if (RPTR_is_set(RPTR_TX_EARLYPTT)) {
-      RPTR_clear(RPTR_TX_EARLYPTT);
-      gmsk_set_reloadfunc(rptr_transmit_header); // Header aussenden
-      rptr_tx_state = RPTRTX_preamble;
-      TxVoice_WrPos = 0;
+    } else {
+      gmsk_set_reloadfunc(rptr_transmit_start);	// change from preamble to header
     } // esle fi
+    TxVoice_WrPos = 0;
   } else {
     TxVoice_WrPos = 0;
     enable_ptt();
-    gmsk_set_reloadfunc(rptr_transmit_header);	// unmittelbar Header hinter
-    rptr_tx_preamble();				// die Preamble setzen
+    gmsk_set_reloadfunc(rptr_transmit_header);	// after TXed peamble + START-pattern, load header
+    gmsk_transmit((U32 *)preamble_dstar, DSTAR_PREAMPLELEN, 1);
+    RPTR_Flags |= RPTR_TRANSMITTING;
+    LED_Set(LED_RED);
     rptr_tx_state = RPTRTX_preamble;
   }
 }
 
 
-void rptr_transmit_early_start(void) {
-  if ((gmsk_get_txdelay() > 138)&&(!is_pttactive())) {
-    RPTR_Flags |= RPTR_TX_EARLYPTT;
-    enable_ptt();
-    gmsk_set_reloadfunc(rptr_transmit_stopframe);	// kill TX, if no header adds
-    rptr_tx_preamble();
-    rptr_tx_state = RPTRTX_txdelay;
-  }
-}
-
-
 void rptr_endtransmit(unsigned char pkt_nr_stop) {
-  if (pkt_nr_stop < VoiceTxBufSize)
+  if (RPTR_is_set(RPTR_TX_EMPTY)) {
+    TxVoice_StopPos = (TxVoice_RdPos+1) % VoiceTxBufSize;
+    // if the rptr_transmit_voicedata() occurred (int), set StopPos new:
+    if (TxVoice_StopPos == TxVoice_RdPos)
+      TxVoice_StopPos = (TxVoice_RdPos+1) % VoiceTxBufSize;
+  } else if (pkt_nr_stop < VoiceTxBufSize)
     TxVoice_StopPos = pkt_nr_stop;
   else
     TxVoice_StopPos = (TxVoice_WrPos+1) % VoiceTxBufSize;
@@ -558,6 +562,7 @@ void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
     }
   } // esle with gaps
   TxVoice_StopPos = TxVoice_RdPos;	// update stop-position, long-gap silence
+  RPTR_clear(RPTR_TX_EMPTY);
 }
 
 
