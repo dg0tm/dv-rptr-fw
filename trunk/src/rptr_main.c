@@ -60,6 +60,8 @@
  * 2011-10-11 V0.40a fixing memory overflow on weak signals, if a sync-pattern detected
  * 2011-10-19 V0.41  transmitting logic changed: see rptr_func.c
  * 2011-10-19 V0.42  Multi-Voice-Frame support
+ * 2011-10-22 V0.43  EOT(TX) feature stops immediately, if buffer is empty (don't match buffer-pos)
+ * 		     feature TESTLOOP removed, start TX with START message, wait until HEADER message
  *
  * ToDo:
  * - PC watchdog
@@ -234,6 +236,7 @@ void cfg_apply(void) {
   txd = swap16(CONFIG_C0.txdelay);
   if (txd > MAX_ALLOWED_TXDELAY) txd = MAX_ALLOWED_TXDELAY;
   gmsk_set_txdelay(txd);
+  if (current_txid!=0xFE) current_txid = 0xFF;
 }
 
 
@@ -272,33 +275,12 @@ bool config_setup(const char *config_data, int len) {
   return true;
 }
 
-
-void init_pcdata(void) {
-  ctrldata.head.id  = FRAMESTARTID;
-  ctrldata.head.len = swap16(sizeof(ctrldata)-5);
-  ctrldata.rxid = 0;
-  headerdata.head.id  = FRAMESTARTID;
-  headerdata.head.len = swap16(sizeof(headerdata)-5);
-  headerdata.head.cmd = RPTR_HEADER;
-  headerdata.rsvd1    = 0x00;
-  headerdata.rsvd2    = 0x00;
-  voicedata.head.id   = FRAMESTARTID;
-  voicedata.head.len  = swap16(sizeof(voicedata)-5);
-  voicedata.head.cmd  = RPTR_DATA;
-  voicedata.rsvd[0]   = 0x00;
-  voicedata.rsvd[1]   = 0x00;
-}
-
-
 __inline void pc_send_byte(U8 data) {
   answer.head.len = 2;
   answer.data[PKT_PARAM_IDX] = data;
 }
 
 
-
-#define SFC_TURN_OFF_TESTMODE	0x00
-#define SFC_TURN_ON_TESTMODE	0x01
 
 #define SFC_GET_CURR_RSSI	0x08
 
@@ -316,19 +298,6 @@ void handle_special_func_cmd(int len) {
   if (len < 2) {
     pc_send_byte(NAK);
   } else switch (rxdatapacket.data[PKT_PARAM_IDX]) {
-  case SFC_TURN_OFF_TESTMODE:
-    RPTR_clear(RPTR_TX_TESTLOOP);
-    pc_send_byte(ACK);
-    break;
-  case SFC_TURN_ON_TESTMODE:
-    if (RPTR_is_set(RPTR_RECEIVING)) {
-      pc_send_byte(NAK);
-    } else {
-      RPTR_set(RPTR_TX_TESTLOOP);
-      rptr_transmit();			// Turn on Xmitter
-      pc_send_byte(ACK);
-    }
-    break;
   case SFC_CORRECT_TX_CLOCK:
     parameter = (rxdatapacket.data[PKT_PARAM_IDX+1]) | (rxdatapacket.data[PKT_PARAM_IDX+2]<<8) |
       (rxdatapacket.data[PKT_PARAM_IDX+3]<<16) | (rxdatapacket.data[PKT_PARAM_IDX+4]<<24);
@@ -466,14 +435,17 @@ __inline void handle_pc_paket(int len) {
     break;
   case RPTR_START:		// early Turn-On xmitter, if configured a long TXD
     if ((status_control & STA_TXENABLE_MASK) && (len==3)) {
-      if (rxdatapacket.data[PKT_PARAM_IDX] != current_txid)
-        rptr_transmit_early_start(); // PTTon, only if TXD > Header-TX-Lengh 137.5ms
+      if (rxdatapacket.data[PKT_PARAM_IDX] != current_txid) {
+	rptr_transmit_preamble(); // PTTon, wait for a header to start TX
+	if (rptr_tx_state <= RPTRTX_preamble)	// starts w/o interrupting a running transmission
+	  current_txid = rxdatapacket.data[PKT_PARAM_IDX];
+      }
     } else
       pc_send_byte(NAK);
     break;
   case RPTR_HEADER:		// start transmitting TXDelay-Preamble-Start-Header
     if (status_control & STA_TXENABLE_MASK) {
-      if ( (rxdatapacket.data[PKT_PARAM_IDX] != current_txid) || (!is_pttactive()) ) {
+      if ((rptr_tx_state <= RPTRTX_preamble) || (rxdatapacket.data[PKT_PARAM_IDX] != current_txid)) {
         rptr_transmit();		// Turn on Xmitter
         current_txid = rxdatapacket.data[PKT_PARAM_IDX];
       } // fi
@@ -643,6 +615,7 @@ void handle_hfdata(void) {
       headerdata.flags = 0x00;
       if (!dstar_checkheader(&headerdata.header)) {
 	headerdata.flags |= 0x80;	// if corrupt set Bit7 of flags
+	rptr_forcefirstsync();
       } // fi crc
       append_crc_ccitt((char *)&headerdata, sizeof(headerdata));
       data_transmit((char *)&headerdata, sizeof(headerdata));
@@ -662,6 +635,23 @@ void rptr_reset_inferface(void) {	// usb disconneced
     // Disable selected output of modulation DAC
     dac_power_ctrl(0);
   } // fi CDC used
+}
+
+
+void init_pcdata(void) {
+  ctrldata.head.id  = FRAMESTARTID;
+  ctrldata.head.len = swap16(sizeof(ctrldata)-5);
+  ctrldata.rxid = 0;
+  headerdata.head.id  = FRAMESTARTID;
+  headerdata.head.len = swap16(sizeof(headerdata)-5);
+  headerdata.head.cmd = RPTR_HEADER;
+  headerdata.rsvd1    = 0x00;
+  headerdata.rsvd2    = 0x00;
+  voicedata.head.id   = FRAMESTARTID;
+  voicedata.head.len  = swap16(sizeof(voicedata)-5);
+  voicedata.head.cmd  = RPTR_DATA;
+  voicedata.rsvd[0]   = 0x00;
+  voicedata.rsvd[1]   = 0x00;
 }
 
 

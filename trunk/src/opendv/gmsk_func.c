@@ -320,8 +320,8 @@ U32	rssi_block;		// sum of cnt x rssi_current, reset on databock-set
 
 static void gmsk_faded_fkt(S32 correction);	// Forward
 
-#define GMSK_PLLMINPERIOD	(GMSK_PLLDEFAULT-(GMSK_PLLDEFAULT/100))	// ^= 4848baud
-#define GMSK_PLLMAXPERIOD	(GMSK_PLLDEFAULT+(GMSK_PLLDEFAULT/100))	// ^= 4752baud
+#define GMSK_PLLMINPERIOD	(GMSK_PLLDEFAULT-(GMSK_PLLDEFAULT/1000))	// ^= 4804.8baud
+#define GMSK_PLLMAXPERIOD	(GMSK_PLLDEFAULT+(GMSK_PLLDEFAULT/1000))	// ^= 4795.2baud
 
 /* generell scheint nach dem Ende von Lock ein Fehler aufzutauchen: gmsk_rxpll_clk immer etwas zu lang
  *
@@ -340,7 +340,7 @@ static void gmsk_locked_fkt(S32 correction) {
   */
   if (abs(demod_korr) < 0x00000FFF) {
     // noch funktioniert es nicht wie gedacht...
-    new_rxpll_period = gmsk_rxpll_clk.u32 + __builtin_sats(demod_korr, 0, 11);	// Fine
+//    new_rxpll_period = gmsk_rxpll_clk.u32 + __builtin_sats(demod_korr, 0, 11);	// Fine
   } else {
     new_rxpll_period = gmsk_rxpll_clk.u32 + __builtin_sats(demod_korr, 13, 11);	// ok f�r +/- 20Hz
   }
