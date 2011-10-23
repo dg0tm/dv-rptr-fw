@@ -69,8 +69,8 @@ typedef void (*tfunction)(void);	// void-void Functions generell
 
 // Serial (RS232) and USB-CDC (serial link) uses frame-based I/O beginning
 // with a start-identification
-#define FRAMESTARTID	0xD0		// RS232-Paket-Startzeichen
-#define PAKETBUFFERSIZE	(12+(21*12))	// Maximum Size per Frame we can receive
+#define FRAMESTARTID		0xD0		// RS232-Paket-Startzeichen
+#define PAKETBUFFERSIZE		(12+(21*12))	// Maximum Size per Frame we can receive
 
 // Returncodes (first data in answer)
 #define NAK			0x15
@@ -81,13 +81,13 @@ typedef void (*tfunction)(void);	// void-void Functions generell
 // below: constuction of a frame:
 // 0xD0 <len> <cmd> <data> <crc>
 // <len> is a 16bit little endian
-typedef struct __attribute__((__packed__)) {
+typedef struct PACKED_DATA {
   unsigned char		id;
   unsigned short	len;
   unsigned char		cmd;
 } tRS232pktHeader;
 
-typedef struct __attribute__((__packed__)) {
+typedef struct PACKED_DATA {
   union {
     tRS232pktHeader	head;
     char		data[PAKETBUFFERSIZE];
