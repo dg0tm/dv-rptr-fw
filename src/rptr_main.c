@@ -62,6 +62,7 @@
  * 2011-10-19 V0.42  Multi-Voice-Frame support
  * 2011-10-22 V0.43  EOT(TX) feature stops immediately, if buffer is empty (don't match buffer-pos)
  * 		     feature TESTLOOP removed, start TX with START message, wait until HEADER message
+ * 2011-10-30 V0.44  conditional PATTERN checking, gmsk_func module now independent of D-Star related
  *
  * ToDo:
  * - PC watchdog
