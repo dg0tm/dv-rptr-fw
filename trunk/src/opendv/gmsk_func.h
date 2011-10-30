@@ -63,6 +63,18 @@ typedef void (*tgmsk_reloadfunc)(void);
 // Demodulator-Handler, set by gmsk_sethandler()
 typedef void (*tgmsk_func)(void);
 
+// Check-Pattern function
+typedef int (*tpattern_func)(unsigned int, unsigned int);
+// this function is called every received bit and shoult check the incoming bitstream (1st param)
+// for a valid pattern. The 2nd parameter is the bitcounter
+// to reset bitcounter return a value != 0:
+// 1 = reset bitcounter, synchronize if not sync
+// 2 = reset bitcounter, force a re-synchronize
+// -1 = reset bitcounter, stop receiving bit into a buffer
+// Attention:
+// Don't forget to define a new buffer (gmsk_set_receivebuf()), if you return > 0!!!
+
+
 
 void	gmsk_init(void);
 void	gmsk_exit(void);
@@ -90,7 +102,7 @@ void	gmsk_demodulator_start(void);
 
 void	gmsk_demodulator_invert(int invert);
 
-void	gmsk_set_synchandler(tgmsk_func syncstart, tgmsk_func syncstop, tgmsk_func framesync);
+void	gmsk_set_patternfunc(tpattern_func patternhandler);
 void	gmsk_set_receivefkt(tgmsk_func fkt_received);
 void	gmsk_set_receivebuf(unsigned long *rxbuf, int bit_len);
 

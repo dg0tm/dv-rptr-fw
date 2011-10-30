@@ -48,6 +48,7 @@
  * 2011-09-21	working sample clock-recover-algorithm
  * 2011-09-22	improved edge detect an bit-restore, need to be tested
  * 2011-10-11	fixing memory overflow on weak signals, if a sync-pattern detected
+ * 2011-10-30	new PATTERN check API - handle pattern-matches oudside this module
  */
 
 
@@ -107,15 +108,6 @@
     AVR32_TC_BURST_NOT_GATED << AVR32_TC_BURST_OFFSET | \
     0 << AVR32_TC_CLKI_OFFSET | \
     AVR32_TC_TCCLKS_TIMER_CLOCK2 << AVR32_TC_TCCLKS_OFFSET )
-
-
-
-// this defines are openDV/D-Star related!
-#define GMSK_PATTERN_MASK	0xFFFFFF00	// 24 bits to match patterns in rx-bitstream
-#define GMSK_SYNCPATTERN	0x55555500
-#define GMSK_SYNCSTART		0x0A6EAA00
-#define GMSK_SYNCSTOP		0xF590AA00	// EOT, is inverted START Pattern
-#define GMSK_FRAMESYNC		0x162D5500	// all >> direction
 
 
 
@@ -239,8 +231,10 @@ typedef enum {
 // Demodulator-Handler Functions:
 tgmsk_clockfkt demod_clockrecover;	// Funktion zum Nachführen der RX-Clock PLL
 
-tgmsk_func demod_syncstart_fkt, demod_syncstop_fkt;
-tgmsk_func demod_received_fkt, demod_framesync_fkt;
+tpattern_func demod_pattern_fkt;
+tgmsk_func demod_received_fkt;
+
+//tgmsk_func demod_syncstart_fkt, demod_syncstop_fkt, demod_framesync_fkt;
 
 
 tDemodState	demod_state;
@@ -500,7 +494,6 @@ INTERRUPT_FUNC gmsk_samplestart_int(void) {
 INTERRUPT_FUNC gmsk_processbit_int(void) {
   S32 clockcorr;
   int cnt, flanke;
-  U32 pattern;
   // disable interrupt handling (it is enabled by timer interrupt if a bit-sampling finished)
   AVR32_ADC.idr	= HFDATA_INT_MASK;
 
@@ -592,37 +585,20 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
     } // fi fertig
   } // fi valid ptr to store data
 
-  pattern = demod_shr&GMSK_PATTERN_MASK;
-  switch (pattern) {
-  case GMSK_SYNCPATTERN:
-    if (demod_state < DEMOD_sync) gmsk_demod_sync();	// bedingtes Wechseln nach SYNC
-    break;
-  case GMSK_SYNCSTART:
+  // Pattern checking - every bit
+  if ((demod_shr&0xFFFFFF00) == 0x55555500) {	// alternating 101010... (minimum 24 bits)
+    gmsk_demod_sync();				// force synchronize
+  } // fi
+  cnt = demod_pattern_fkt(demod_shr, demod_rxbitcnt);
+  if (cnt > 0) {		// application matches pattern
+    demod_rxbitcnt = 0;		// restart bitcouter
+    if ((demod_state < DEMOD_sync)||(cnt > 1)) gmsk_demod_sync();
+  } else if (cnt < 0) {		// means "Stop receiving now"
+    gmsk_demod_unlock();
     demod_rxbitcnt = 0;
     demod_rxptr    = NULL;
-    if (demod_syncstart_fkt != NULL) demod_syncstart_fkt();
-    break;
-  case GMSK_SYNCSTOP:
-    gmsk_demod_unlock();
-    if (demod_syncstop_fkt != NULL) demod_syncstop_fkt();
-    break;
-  case GMSK_FRAMESYNC:
-    if (demod_rxbitcnt != 0) {
-      pattern = demod_rxbitcnt;
-      demod_rxbitcnt = 0;
-      if (demod_rxptr != NULL) {	// we are receiving a frame, bit bit-shifted
-	if ((demod_rxsize-pattern) < 32) {	// fi Word full
-	  *demod_rxptr = swap32(demod_shr);
-          demod_rxptr = NULL;
-	  if (demod_received_fkt != NULL) demod_received_fkt();	// process unfinished frame
-	} else demod_rxptr = NULL;	// fi saves last bits; esle don't receive anymore
-	demod_state = DEMOD_unlocked;
-      } // fi unfinished VOICE-DATA frame
-    } // fi
-    if (demod_state < DEMOD_sync) gmsk_demod_sync();
-    if (demod_framesync_fkt != NULL) demod_framesync_fkt();
-    break;
-  } // hctiws
+    demod_rxsize   = 0;
+  }
 
 #ifdef DEMOD_DBG_BITBUFSIZE
   // a additional sample-buffer fpr debugging:
@@ -947,10 +923,18 @@ void gmsk_demodulator_invert(int invert) {
 }
 
 
-void gmsk_set_synchandler(tgmsk_func syncstart, tgmsk_func syncstop, tgmsk_func framesync) {
-  demod_syncstart_fkt = syncstart;
-  demod_syncstop_fkt  = syncstop;
-  demod_framesync_fkt = framesync;
+// empty function -> no NULL check every received bit necesary
+int no_patternhandler(unsigned int pattern, unsigned int bitpos) {
+  return 0;
+}
+
+
+void gmsk_set_patternfunc(tpattern_func patternhandler) {
+  if (patternhandler != NULL) {
+    demod_pattern_fkt = patternhandler;
+  } else {
+    demod_pattern_fkt = no_patternhandler;
+  }
 }
 
 
@@ -998,11 +982,8 @@ void gmsk_init(void) {
   // *** Demodulator Global Vars ***
   dsp16_vect_zeropad(demod_adcin, DEMOD_ADC_SIZE, DEMOD_ADC_SIZE);
   gmsk_demod_unlock();
-  demod_syncstart_fkt = NULL;
-  demod_syncstop_fkt  = NULL;
-  demod_received_fkt  = NULL;
-  demod_framesync_fkt = NULL;
-  //dcd_init();
+  demod_pattern_fkt  = no_patternhandler;
+  demod_received_fkt = NULL;
 
   // *** Modulator Global Vars ***
   gmsk_txmod_clk = GMSK_MOD_PHASE;

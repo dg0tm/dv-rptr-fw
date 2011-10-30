@@ -52,6 +52,14 @@
 #define DSTAR_LASTFRAMEBITSIZE	(32+15+1)	//48bits in sum
 #define DSTAR_FRAMEBITSIZE	96
 
+
+// BITpattern - this defines are openDV/D-Star related!
+#define DSTAR_PATTERN_MASK	0xFFFFFF00	// 24 bits to match patterns in rx-bitstream
+#define DSTAR_SYNCSTART		0x0A6EAA00
+#define DSTAR_SYNCSTOP		0xF590AA00	// EOT, is inverted START Pattern
+#define DSTAR_FRAMESYNC		0x162D5500	// all >> direction
+
+
 #define FLAG0_USERPT_MASK	0x40		// Bit6 of flags[0]
 #define FLAG0_EMERG_MASK	0x08		// Bit3 of flags[0]
 
