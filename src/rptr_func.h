@@ -47,7 +47,7 @@ extern unsigned int RPTR_Flags;
 #define RPTR_RX_SYNC		0x08
 #define RPTR_RX_FRAME		0x10
 #define RPTR_RX_HEADER		0x20
-
+#define RPTR_RX_PREAMBLE	0x40	// permanent indicator, don't clear flag
 #define RPTR_RECEIVING		0x80	// permanent indicator, don't clear flag
 
 // Transmit Flags Bit 8..15
