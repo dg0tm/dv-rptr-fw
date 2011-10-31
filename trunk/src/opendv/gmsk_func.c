@@ -49,6 +49,7 @@
  * 2011-09-22	improved edge detect an bit-restore, need to be tested
  * 2011-10-11	fixing memory overflow on weak signals, if a sync-pattern detected
  * 2011-10-30	new PATTERN check API - handle pattern-matches oudside this module
+ * 2011-10-31	bugfix on setting new RX PLL clock fixed
  */
 
 
@@ -321,7 +322,7 @@ static void gmsk_faded_fkt(S32 correction);	// Forward
  *
  */
 static void gmsk_locked_fkt(S32 correction) {
-  U32 new_rxpll_period;
+  U32 new_rxpll_period = gmsk_rxpll_clk.u32;
   S32 clock_difference = ((correction-demod_lastkorr)<<16) / demod_korrcnt;
   Average32(demod_korr,  correction<<16, PLL_LOCK_KORR_FAK);
   Average32(demod_drift, clock_difference, PLL_LOCK_DRIFT_FAK);
@@ -334,9 +335,9 @@ static void gmsk_locked_fkt(S32 correction) {
   */
   if (abs(demod_korr) < 0x00000FFF) {
     // noch funktioniert es nicht wie gedacht...
-//    new_rxpll_period = gmsk_rxpll_clk.u32 + __builtin_sats(demod_korr, 0, 11);	// Fine
+//    new_rxpll_period += __builtin_sats(demod_korr, 0, 11);	// Fine
   } else {
-    new_rxpll_period = gmsk_rxpll_clk.u32 + __builtin_sats(demod_korr, 13, 11);	// ok f�r +/- 20Hz
+    new_rxpll_period +=  __builtin_sats(demod_korr, 13, 11);	// ok f�r +/- 20Hz
   }
   if (new_rxpll_period > GMSK_PLLMAXPERIOD)
     gmsk_rxpll_clk.u32 = GMSK_PLLMAXPERIOD;
@@ -586,9 +587,6 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
   } // fi valid ptr to store data
 
   // Pattern checking - every bit
-  if ((demod_shr&0xFFFFFF00) == 0x55555500) {	// alternating 101010... (minimum 24 bits)
-    gmsk_demod_sync();				// force synchronize
-  } // fi
   cnt = demod_pattern_fkt(demod_shr, demod_rxbitcnt);
   if (cnt > 0) {		// application matches pattern
     demod_rxbitcnt = 0;		// restart bitcouter
