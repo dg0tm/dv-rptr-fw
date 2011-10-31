@@ -588,6 +588,7 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
 
   // Pattern checking - every bit
   cnt = demod_pattern_fkt(demod_shr, demod_rxbitcnt);
+  // ToDo nach Return BusFetch Error !
   if (cnt > 0) {		// application matches pattern
     demod_rxbitcnt = 0;		// restart bitcouter
     if ((demod_state < DEMOD_sync)||(cnt > 1)) gmsk_demod_sync();
@@ -818,6 +819,9 @@ static __inline void gmsk_starttxdelay(void) {
  */
 //! @{
 
+#define GMSK_SET_TX_MUTEX()	//Disable_global_interrupt()
+#define GMSK_CLR_TX_MUTEX()	//Enable_global_interrupt()
+
 
 void gmsk_transmit(unsigned long *data, unsigned int length_in_bits, unsigned int alertbitpos) {
   if ((GMSK_TX_TIMER.sr&AVR32_TC_CLKSTA_MASK) == 0)	{ // if clock not enabled
@@ -862,7 +866,9 @@ __inline unsigned int gmsk_get_txdelay(void) {
 
 
 __inline void gmsk_set_reloadfunc(tgmsk_reloadfunc newfunc) {
+  GMSK_SET_TX_MUTEX();
   gmsk_reloadhandler = newfunc;
+  GMSK_CLR_TX_MUTEX();
 }
 
 
@@ -890,6 +896,10 @@ void gmsk_adjusttxperiod(signed int correction) {
 /*! \name GMSK Demodulator API Functions
  */
 //! @{
+
+#define GMSK_SET_RX_MUTEX()	//Disable_global_interrupt()
+#define GMSK_CLR_RX_MUTEX()	//Enable_global_interrupt()
+
 
 __inline void gmsk_stop_rxtimer(void) {
   GMSK_RX_TIMER.ccr = AVR32_TC_CLKDIS_MASK;	// Stop Timer
@@ -928,23 +938,29 @@ int no_patternhandler(unsigned int pattern, unsigned int bitpos) {
 
 
 void gmsk_set_patternfunc(tpattern_func patternhandler) {
+  GMSK_SET_RX_MUTEX();
   if (patternhandler != NULL) {
     demod_pattern_fkt = patternhandler;
   } else {
     demod_pattern_fkt = no_patternhandler;
   }
+  GMSK_CLR_RX_MUTEX();
 }
 
 
 
 void gmsk_set_receivefkt(tgmsk_func fkt_received) {
+  GMSK_SET_RX_MUTEX();
   demod_received_fkt  = fkt_received;
+  GMSK_CLR_RX_MUTEX();
 }
 
 
 __inline void gmsk_set_receivebuf(unsigned long *rxbuf, int bit_len) {
+  GMSK_SET_RX_MUTEX();
   demod_rxptr  = rxbuf;
   demod_rxsize = bit_len;
+  GMSK_CLR_RX_MUTEX();
 }
 
 
