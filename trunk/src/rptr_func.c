@@ -34,6 +34,7 @@
  * 2011-10-21  JA  transition from EOT to a new header is now w/o DC - use SYNC pattern instead
  * 2011-10-32  JA  handle all PATTERN checks in this module
  * 2011-11-04  JA  rptr_get_unsend() returns false values in some cases - fixed
+ * 2011-11-04  JA  bugfix in rptr_is_syncpacket() -> function now w/o dead-lock
  *
  * Attention:
  * Prevent sending 1-voice-frame like HEADER - VOICE - EOT. Minimum 2 frames!
@@ -251,10 +252,13 @@ __inline int rptr_is_syncpaket(U8 index) {
     U8 bits_zero, err_cnt = 0;
     do {
        bits_zero = __builtin_clz(check_pattern);
-       if (bits_zero < 32) {
+       if (bits_zero == 31) { // last Bit of pattern is "1" -> handle special, cause no <<= 32 works
+	 err_cnt++;
+	 bits_zero = 32;
+       } else if (bits_zero < 32) {	// fi count
          check_pattern <<= (bits_zero+1);
          err_cnt++;
-       } // fi count
+       }
     } while (bits_zero != 32);
     return (err_cnt <= RPTR_SYNC_MAXBITERRS);
   } else {
@@ -615,7 +619,8 @@ void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
 #else						// a sync frame!
 #define cycle	pkt_nr
 #endif
-  if (pkt_nr >= VoiceTxBufSize) return;		// prevent buffer overflow
+  if ((pkt_nr >= VoiceTxBufSize) || (pkt_nr == (TxVoice_RdPos+VoiceTxBufSize-1) % VoiceTxBufSize))
+    return;		// prevent buffer overflow OR writing on current TXed buffer.
   new_data = &DStar_TxVoice[pkt_nr];
   memcpy(new_data, buf, sizeof(tds_voicedata));	// copy new data
   if (cycle==0) {				// Sync-Frame needed?
