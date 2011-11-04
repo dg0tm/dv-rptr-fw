@@ -307,9 +307,9 @@ U32	rssi_block;		// sum of cnt x rssi_current, reset on databock-set
 #define DEMOD_THERSHOLD_PHASE	(GMSK_RCDEFAULT*3/4)	// compare-value correction
 #define DEMOD_BAD_EDGES		50	// Locked, if > -> faded
 #define DEMOD_GOOD_EDGES	50	// Faded, if > -> locked
-#define DEMOD_NOVALID_EDGES	150	// Faded, if > -> unlocked
+#define DEMOD_NOVALID_EDGES	300	// Faded, if > -> unlocked
 
-#define PLL_LOCK_KORR_FAK	0.050	// ok.
+#define PLL_LOCK_KORR_FAK	0.050	//slower, test [0.050 =  ok].
 #define PLL_LOCK_DRIFT_FAK	0.005
 #define DEMOD_THERSHOLD_PLL	(GMSK_RCDEFAULT<<11)
 
