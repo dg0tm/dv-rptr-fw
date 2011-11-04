@@ -33,6 +33,7 @@
  * 		   5.04s no new packed arrives from PC or EOT is received.
  * 2011-10-21  JA  transition from EOT to a new header is now w/o DC - use SYNC pattern instead
  * 2011-10-32  JA  handle all PATTERN checks in this module
+ * 2011-11-04  JA  rptr_get_unsend() returns false values in some cases - fixed
  *
  * Attention:
  * Prevent sending 1-voice-frame like HEADER - VOICE - EOT. Minimum 2 frames!
@@ -162,6 +163,7 @@ void rptr_transmit_voicedata(void) {
   if (TxVoice_RdPos == TxVoice_StopPos) {	// EOT-position reached? -> last voice frame
     gmsk_transmit(voicedat->packet, DSTAR_VOICEFRAMEBITSIZE, 1);
     gmsk_set_reloadfunc(&rptr_transmit_stopframe);
+    TxVoice_WrPos = TxVoice_RdPos;		// show zero "unsend" frames
     rptr_tx_state = RPTRTX_lastframe;
   } else { // fi stop with this pkt
     gmsk_transmit(voicedat->packet, DSTAR_FRAMEBITSIZE, DSTAR_FRAMEBITSIZE-DSTAR_BEFOREFRAMEENDS);
@@ -594,7 +596,7 @@ void rptr_endtransmit(unsigned char pkt_nr_stop) {
   } else if (pkt_nr_stop < VoiceTxBufSize)
     TxVoice_StopPos = pkt_nr_stop;
   else
-    TxVoice_StopPos = (TxVoice_WrPos+1) % VoiceTxBufSize;
+    TxVoice_StopPos = TxVoice_WrPos % VoiceTxBufSize;
 }
 
 
