@@ -34,7 +34,10 @@
  * 2011-10-21  JA  transition from EOT to a new header is now w/o DC - use SYNC pattern instead
  * 2011-10-32  JA  handle all PATTERN checks in this module
  * 2011-11-04  JA  rptr_get_unsend() returns false values in some cases - fixed
- * 2011-11-04  JA  bugfix in rptr_is_syncpacket() -> function now w/o dead-lock
+ * 2011-11-04  JA  bugfix in  -> function now w/o dead-lock
+ * 2011-04-05  JA  add receive-unlock function -> this terminate receiving, if RX-PLL unlock
+ *		   moved one-counter part of rptr_is_syncpacket() as a separate function to "crc.c"
+ *		   add a "lossy" START-detection: tolerate up to 2 bit-errors, if a 17bit SYNC was before
  *
  * Attention:
  * Prevent sending 1-voice-frame like HEADER - VOICE - EOT. Minimum 2 frames!
@@ -246,24 +249,7 @@ void rptr_transmit_start(void) {
 
 // Abfrage, ob Daten-Bytes == FrameSyncDaten
 __inline int rptr_is_syncpaket(U8 index) {
-  U32 check_pattern;
-  check_pattern = (DStar_RxVoice[index].packet[2] & DSTAR_SYNCMSK) ^ DSTAR_SYNC;
-  if (check_pattern != 0) {
-    U8 bits_zero, err_cnt = 0;
-    do {
-       bits_zero = __builtin_clz(check_pattern);
-       if (bits_zero == 31) { // last Bit of pattern is "1" -> handle special, cause no <<= 32 works
-	 err_cnt++;
-	 bits_zero = 32;
-       } else if (bits_zero < 32) {	// fi count
-         check_pattern <<= (bits_zero+1);
-         err_cnt++;
-       }
-    } while (bits_zero != 32);
-    return (err_cnt <= RPTR_SYNC_MAXBITERRS);
-  } else {
-    return true;
-  }
+  return (count_no_of_1((DStar_RxVoice[index].packet[2] & DSTAR_SYNCMSK) ^ DSTAR_SYNC) <= RPTR_SYNC_MAXBITERRS);
 }
 
 
@@ -308,50 +294,88 @@ void rptr_receivedhdr(void) {
 }
 
 
+#ifdef DEBUG_PREAMBLE
+#define DBG_PREABLE_START()	debugpin_set(DEBUG_PIN2)
+#define DBG_PREABLE_STOP()	debugpin_clear(DEBUG_PIN2)
+#else
+#define DBG_PREABLE_START()
+#define DBG_PREABLE_STOP()
+#endif
+
+
+// start-functions, called if a start-receiving condition (pattern) detects.
+void rptr_startrx_now(void) {
+  gmsk_set_receivebuf(DStar_RxHeader, DSTAR_HEADEROUTBITSIZE);
+  gmsk_set_receivefkt(rptr_receivedhdr);
+  gmsk_set_patternfunc(rptr_whilereceivepattern);
+  RPTR_RxFrameCount = 0;	// reset counters
+  RPTR_RxLastSync   = 0;
+  DStar_LostSyncCounter = 0;
+  RPTR_clear(RPTR_RX_PREAMBLE);
+  RPTR_set(RPTR_RECEIVING|RPTR_RX_START);	// a new transmission starts
+  LED_Set(LED_GREEN);
+  DBG_PREABLE_STOP();
+}
+
+
+void rptr_syncrx_now(void) {
+  // first update receive-buffer to store the voice data, if no header rxed before:
+  // this enables receiving (after DSTAR_FRAMEBITSIZE a rptr_receivedframe() occurs)
+  gmsk_set_receivebuf(DStar_RxVoice[1].packet, DSTAR_FRAMEBITSIZE);
+  gmsk_set_receivefkt(rptr_receivedframe);
+  gmsk_set_patternfunc(rptr_whilereceivepattern);
+  RPTR_RxFrameCount = 1;	// reset counters
+  RPTR_RxLastSync   = 0;
+  DStar_LostSyncCounter = 0;
+  RPTR_clear(RPTR_RX_PREAMBLE);
+  RPTR_set(RPTR_RECEIVING|RPTR_RX_FRAMESYNC);
+  LED_Set(LED_GREEN);
+  DBG_PREABLE_STOP();
+}
+
+
 // Handler to Receive Header in Mem-Buffer (DStar_RxHeader)
 int rptr_waitpattern_START(unsigned int pattern, unsigned int bitcounter) {
   switch (pattern&DSTAR_PATTERN_MASK) {
   case DSTAR_SYNCPREAMBLE:
     if (!RPTR_is_set(RPTR_RX_PREAMBLE)) {
-      RPTR_set(RPTR_RX_PREAMBLE);
+      RPTR_set(RPTR_RX_PREAMBLE|RPTR_RX_1STPREAMBLE);
       gmsk_set_receivebuf(NULL, 0);
+      DBG_PREABLE_START();
       return 2;			// force sync now
     }
-  case DSTAR_SYNCSTART:
-    gmsk_set_receivebuf(DStar_RxHeader, DSTAR_HEADEROUTBITSIZE);
-    gmsk_set_receivefkt(rptr_receivedhdr);
-    gmsk_set_patternfunc(rptr_whilereceivepattern);
-    RPTR_RxFrameCount = 0;	// reset counters
-    RPTR_RxLastSync   = 0;
-    DStar_LostSyncCounter = 0;
-    RPTR_Flags |= RPTR_RECEIVING|RPTR_RX_START;	// a new transmission starts
-    LED_Set(LED_GREEN);
-    return 1;		// request sync, restart rxbitcouter
-  case DSTAR_FRAMESYNC:
-    // first update receive-buffer to store the voice data, if no header rxed before:
-    // this enables receiving (after DSTAR_FRAMEBITSIZE a rptr_receivedframe() occurs)
-    gmsk_set_receivebuf(DStar_RxVoice[1].packet, DSTAR_FRAMEBITSIZE);
-    gmsk_set_receivefkt(rptr_receivedframe);
-    gmsk_set_patternfunc(rptr_whilereceivepattern);
-    RPTR_RxFrameCount = 1;	// reset counters
-    RPTR_RxLastSync   = 0;
-    DStar_LostSyncCounter = 0;
-    RPTR_Flags |= RPTR_RECEIVING|RPTR_RX_SYNC;
-    LED_Set(LED_GREEN);
+    break;
+  case ((~DSTAR_SYNCPREAMBLE)&0xFFFFFF00):	// inverted preamble pattern - do nothing
+    break;
+  case DSTAR_SYNCSTART:		// A START-PATTERN was found
+    rptr_startrx_now();
+    return 1;			// request sync, restart rxbitcouter
+  case DSTAR_FRAMESYNC:		// A FRAME-SYNC-PATTERN was found (no earlier START detected)
+    rptr_syncrx_now();
     return 1;
   default:
-    RPTR_clear(RPTR_RX_PREAMBLE);
+    if (RPTR_is_set(RPTR_RX_PREAMBLE) && (bitcounter>RPTR_MAXLEN_RXPREAMBLE)) {
+      RPTR_clear(RPTR_RX_PREAMBLE);
+      DBG_PREABLE_STOP();
+    } // fi
     break;
   } // hctiws
+  // now check "lossy" start condition
+  if ((pattern & 0x0001FFFF) == 0x0000AAAA) {	// oldest Bits in sync state...
+    if (count_no_of_1((pattern&0xFFFE0000)^(DSTAR_SYNCSTART&0xFFFE0000)) < 3) {
+      rptr_startrx_now();
+      return 1;			// request sync, restart rxbitcouter
+    }
+  } // fi old16 sync
   return 0;		// do nothing
 }
+
 
 
 /* rptr_whilereceivepattern()
  * called every received bit. If a FRAMESYNC- or a EOT-pattern is found in the rx bitstream
  * force a re-sync or stop receiving
  */
-
 int rptr_whilereceivepattern(unsigned int pattern, unsigned int bitcounter) {
   switch (pattern&DSTAR_PATTERN_MASK) {
   case DSTAR_SYNCPREAMBLE:	// a 48bit long EOT condition (24 + 24 bit) should follow
@@ -360,7 +384,7 @@ int rptr_whilereceivepattern(unsigned int pattern, unsigned int bitcounter) {
     } // fi wait for EOT
     return 0;
   case DSTAR_FRAMESYNC:	// A Voice-Frame with a Sync-Pattern 0101010111010001101000 was detected
-    RPTR_Flags |= RPTR_RX_SYNC;
+    RPTR_set(RPTR_RX_FRAMESYNC);
     if (bitcounter != 0) {	// on a bitcounter of Zero a correct frame was received
       // otherwise, we must shift it a few bits to re-sync
       if (bitcounter < 5) {	// PLL to slow, FRAME-SYNC to late
@@ -377,8 +401,8 @@ int rptr_whilereceivepattern(unsigned int pattern, unsigned int bitcounter) {
     break;
   case DSTAR_SYNCSTOP:
     if (bitcounter < (24+5) ) {
-      gmsk_set_patternfunc(rptr_waitpattern_START);
       RPTR_clear(RPTR_RECEIVING|RPTR_RX_PREAMBLE);
+      gmsk_set_patternfunc(rptr_waitpattern_START);
       RPTR_set(RPTR_RX_STOP);
       LED_Clear(LED_GREEN);
       return -1;	// a VALID STOP receives on BITCOUNTER Pos 24. Stop Receiving
@@ -389,31 +413,14 @@ int rptr_whilereceivepattern(unsigned int pattern, unsigned int bitcounter) {
 }
 
 
-
-/* rptr_receivedframesync()
- * called every time, if a FRAMESYNC pattern is found in the rx bitstream
- * (after a call of rptr_receivedframe(), if all ok
- *
-void rptr_receivedframesync(void) {
-  // A Voice-Frame with a Sync-Pattern 0101010111010001101000 was detected
-  RPTR_Flags |= RPTR_RX_SYNC;
+void rptr_receiveunlock(void) {
   if (RPTR_is_set(RPTR_RECEIVING)) {
-    if ((RPTR_RxFrameCount-RPTR_RxLastSync) > DSTAR_SYNCINTERVAL) {
-      RPTR_RxLastSync = RPTR_RxFrameCount-1;	// update sync pos cnt
-    }
-  } else {
-    RPTR_Flags |= RPTR_RECEIVING;
-    // first update receive-buffer to store the voice data, if no header rxed before:
-    // this enables receiving (after DSTAR_FRAMEBITSIZE a rptr_receivedframe() occurs)
-    gmsk_set_receivebuf(DStar_RxVoice[1].packet, DSTAR_FRAMEBITSIZE);
-    gmsk_set_receivefkt(rptr_receivedframe);
-    RPTR_RxFrameCount = 1;	// reset counters
-    RPTR_RxLastSync   = 0;
-    DStar_LostSyncCounter = 0;
-    LED_Set(LED_GREEN);
+    RPTR_clear(RPTR_RECEIVING|RPTR_RX_PREAMBLE);
+    gmsk_set_patternfunc(rptr_waitpattern_START);
+    RPTR_set(RPTR_RX_LOST);
+    LED_Clear(LED_GREEN);
   }
-}*/
-
+}
 
 
 //! @}
@@ -526,9 +533,9 @@ void rptr_init_header(const tds_header *header) {
 
 
 void rptr_receive(void) {
-//  gmsk_set_synchandler(rptr_getrxheader, rptr_gotstopframe, rptr_receivedframesync);
   gmsk_demodulator_start();
   gmsk_set_patternfunc(rptr_waitpattern_START);	// call after "START" otherwise func will be resetted
+  gmsk_set_unlockedfunc(rptr_receiveunlock);
 }
 
 
@@ -600,7 +607,7 @@ void rptr_endtransmit(unsigned char pkt_nr_stop) {
   } else if (pkt_nr_stop < VoiceTxBufSize)
     TxVoice_StopPos = pkt_nr_stop;
   else
-    TxVoice_StopPos = TxVoice_WrPos % VoiceTxBufSize;
+    TxVoice_StopPos = TxVoice_WrPos;	//+1) % VoiceTxBufSize;
 }
 
 
@@ -619,7 +626,7 @@ void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
 #else						// a sync frame!
 #define cycle	pkt_nr
 #endif
-  if ((pkt_nr >= VoiceTxBufSize) || (pkt_nr == (TxVoice_RdPos+VoiceTxBufSize-1) % VoiceTxBufSize))
+  if ((pkt_nr >= VoiceTxBufSize) || (pkt_nr == (TxVoice_RdPos+(VoiceTxBufSize-1)) % VoiceTxBufSize))
     return;		// prevent buffer overflow OR writing on current TXed buffer.
   new_data = &DStar_TxVoice[pkt_nr];
   memcpy(new_data, buf, sizeof(tds_voicedata));	// copy new data

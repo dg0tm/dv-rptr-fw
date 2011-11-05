@@ -40,20 +40,25 @@ typedef enum {
 
 
 extern unsigned int RPTR_Flags;
-// Receive Flags (checked in handle_hfdata()) Bit 0..7
+// Receive Flags (checked in handle_hfdata()) Bit 0..8
 #define RPTR_RX_START		0x01
 #define RPTR_RX_STOP		0x02
 #define RPTR_RX_LOST		0x04
-#define RPTR_RX_SYNC		0x08
+#define RPTR_RX_FRAMESYNC	0x08	// first detection of a preamble pattern
 #define RPTR_RX_FRAME		0x10
 #define RPTR_RX_HEADER		0x20
 #define RPTR_RX_PREAMBLE	0x40	// permanent indicator, don't clear flag
 #define RPTR_RECEIVING		0x80	// permanent indicator, don't clear flag
 
-// Transmit Flags Bit 8..15
-#define RPTR_TX_EMPTY		0x0100
+#define RPTR_RX_1STPREAMBLE	0x0100	// first preamble detected
+
+// Transmit Flags Bit 9..15
+#define RPTR_TX_EMPTY		0x0200
 
 #define RPTR_TRANSMITTING	0x8000	// permanent indicator, don't clear flag
+
+#define RPTR_INDICATOR_MASK	0x033F	// all w/o permanents
+
 
 #define RPTR_is_set(f)		(RPTR_Flags&f)
 #define RPTR_set(f)		(RPTR_Flags |= f)
@@ -64,6 +69,9 @@ extern trptr_tx_state 		rptr_tx_state;
 
 // maximum receive packets, if no sync-frame received:
 #define RPTR_MAX_PKT_WO_SYNC	64	// norm 50! Test
+
+#define RPTR_MAXLEN_RXPREAMBLE	1200	// 250ms - holds PREAMBLE-FLAG until START/FRAME-SYNC or
+				        // this value is reached.
 
 #define DSTAR_BEFOREFRAMEENDS	16	// 16 bit-time before gmsk-modulator-data runs out
 // attention: this value must be smaller than 32 (last 32bit must be alreay loaded in GMSK fct)

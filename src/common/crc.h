@@ -21,6 +21,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this package. If not, see <http://www.gnu.org/licenses/>.
  *
+ * 2011-11-05	Add "count_no_of_1()" as a AVR32 optimized function
  */
 
 #ifndef CRC_H_
@@ -36,6 +37,10 @@ unsigned short crc_ccitt(const char *buffer, unsigned int len);
 void append_crc_ccitt_revers(char *buffer, unsigned int len);
 
 unsigned short crc_ccitt_revers(const char *buffer, unsigned int len);
+
+// count_no_of_1() is not a polynomal crc check. This function counts the number of ones found
+// in the pattern (U32) and returns it (0 to 32).
+int count_no_of_1(unsigned int pattern);
 
 
 #endif // CRC_H_/
