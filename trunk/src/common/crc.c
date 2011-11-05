@@ -22,10 +22,14 @@
  * You should have received a copy of the GNU General Public License
  * along with this package. If not, see <http://www.gnu.org/licenses/>.
  *
+ * Report:
+ * 2011-11-05	Add "count_no_of_1()" as a AVR32 optimized function
  */
+
 
 #include "crc.h"
 #include "compiler.h"	// Union16 Typ
+
 
 #ifdef USECCITTTABLE
 static const unsigned short tab_ccitt[256] = {
@@ -98,7 +102,6 @@ static const unsigned short tab_ccitt_revers[256] = {
   0xf78f,0xe606,0xd49d,0xc514,0xb1ab,0xa022,0x92b9,0x8330,
   0x7bc7,0x6a4e,0x58d5,0x495c,0x3de3,0x2c6a,0x1ef1,0x0f78
 };
-
 
 
 unsigned short crc_ccitt(const char *buffer, unsigned int len) {
@@ -179,4 +182,19 @@ unsigned short crc_ccitt_revers(const char *buffer, unsigned int len) {
   return (~crc.u16);
 }
 
+
+int count_no_of_1(unsigned int pattern) {
+  int bits_zero, ones_cnt;
+  if (pattern == 0) return 0;			// shorten execution time a bit, if no "one" found
+  ones_cnt = 0;
+  do {
+     bits_zero = __builtin_clz(pattern);	// this AVR32 command counts the leading zeroes.
+     if (bits_zero < 32) {
+       ones_cnt++;		// we found a "1" (otherwise __builtin_clz() returns 32)
+       bits_zero++;		// we must shift this "1" out - so we do that next line
+       pattern <<= bits_zero;	// special condition __builtin_clz() returns 31 => stops while()
+     } // fi
+  } while (bits_zero != 32);
+  return (ones_cnt);
+}
 

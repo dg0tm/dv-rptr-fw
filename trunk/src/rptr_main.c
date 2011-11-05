@@ -63,10 +63,13 @@
  * 2011-10-22 V0.43  EOT(TX) feature stops immediately, if buffer is empty (don't match buffer-pos)
  * 		     feature TESTLOOP removed, start TX with START message, wait until HEADER message
  * 2011-10-30 V0.44  conditional PATTERN checking, gmsk_func module now independent of D-Star related
+ * 2011-11-05 V0.50  RC1; watchdog-feature, fixed to 30s, PREAMBLE-Detection-Logic
  *
  * ToDo:
- * - PC watchdog
- * ~ first SYNC detect -> Message (early switch on Transceiver)
+ * - no new features for release V1.00
+ * - USB not working after reset cmd, maybe a USB-unplug msg is needed
+ * + first SYNC detect -> Message (early switch on Transceiver)
+ * + PC watchdog
  * + RSSI / SQL sampling while receiving
  * + Transmitter-State enumeration for GET_STATUS
  * + force-bootloader command
@@ -97,6 +100,7 @@
 
 #include <string.h>
 
+#define PCWD_TIMEOUT	(30UL*MASTERCLOCK)	// 30 seconds
 
 typedef int (*tdata_rx_fct)(void);		// Data-Received function (return #bytes)
 typedef int (*tdata_cpy_rx)(char *, int);	// Copy received data
@@ -162,6 +166,8 @@ typedef enum {
 U8		status_control  = STA_NOCONFIG_MASK|STA_CANDUPLEX_MASK;	// Holds persitent control-flags
 U8		status_state;	// Holds state of RX/TX
 U8		current_txid;
+
+U32		last_pc_activity;	// timestamp, updated every valid PC-packet handled
 
 // functions used for pc/gateway communication:
 // pre-initialisation to USB-CDC, but easy reconfigurable to RS232
@@ -366,6 +372,7 @@ __inline void add_multi_voice_2_rptr(int len) {
 // verarbeitet "paket" mit len optionalen Daten (Header NICHT mitgerechnet).
 __inline void handle_pc_paket(int len) {
   answer.head.len = 0;			// no answer.
+  last_pc_activity = Get_system_register(AVR32_COUNT);
   switch (rxdatapacket.head.cmd) {	// Kommando-Byte
   case RPTR_GET_STATUS:
     if (len==1) {			// request
@@ -496,40 +503,41 @@ __inline void handle_pc_paket(int len) {
 }
 
 
-
 // handle_pcdata() testet, ob im Receive-Buffer Paket-Daten (auch unvollst.) liegen
 // und kopiert diese nach 'rxdatapaket' um.
-// Bei gÃ¼ltigen Paketen, wird 'handle_pc_paket()'
+// Bei gültigen Paketen, wird 'handle_pc_paket()'
 // aufgerufen.
 void handle_pcdata(void) {
-  int rxbytes;
-  rxbytes = data_received();
-  if (rxbytes > 4) {		// a frame shout be have D0 length and crc
-    U16 length = 0;
-    if (cdc_look_byte(0) != FRAMESTARTID) {
-      data_flushrx();		// destroy garbage on COM/USB
-    } else {
-      length = cdc_look_leword(1);
-      if (length <= (sizeof(rxdatapacket)-5)) {
-	if (length <= (rxbytes-5)) {
-	  data_copyrx(rxdatapacket.data, length+5);
-	  // data_flushrx();	// needed for buggy software, obsolete - using timeout
-	} else					// packet still in receiving (on slow serial)
-	  length = 0;
+  int rxbytes, burst_cnt = 5;
+  do {
+    rxbytes = data_received();
+    if (rxbytes > 4) {					// a frame shout be have D0 length and crc
+      U16 length = 0;
+      if (cdc_look_byte(0) != FRAMESTARTID) {
+	data_flushrx();		// destroy garbage on COM/USB
       } else {
-	data_flushrx();				// incorrect packet
-	length = 0;				// remove all data from buffer
-      } // fi incomplete
-    } // esle
-    if (length > 0) {
-//    if (rxdatapacket.head.id == FRAMESTARTID) { // packet begins with a valid frame / checked before
-      U16 pkt_crc = 0;
-      if (status_control&STA_CRCENABLE_MASK) {	// check CRC only, if needed.
-	pkt_crc = crc_ccitt(rxdatapacket.data, length+5);
-      } // fi check CRC
-      if (pkt_crc==0) handle_pc_paket(length);	// crc correct
-    } // fi payload
-  } // fi was da
+	length = cdc_look_leword(1);
+	if (length <= (sizeof(rxdatapacket)-5)) {
+	  if (length <= (rxbytes-5)) {
+	    data_copyrx(rxdatapacket.data, length+5);
+	    // data_flushrx();	// needed for buggy software, obsolete - using timeout
+	  } else					// packet still in receiving (on slow serial)
+	    length = 0;
+	} else {
+	  data_flushrx();				// incorrect packet
+	  length = 0;				// remove all data from buffer
+	} // fi incomplete
+      } // esle
+      if (length > 0) {
+  //    if (rxdatapacket.head.id == FRAMESTARTID) { // packet begins with a valid frame / checked before
+	U16 pkt_crc = 0;
+	if (status_control&STA_CRCENABLE_MASK) {	// check CRC only, if needed.
+	  pkt_crc = crc_ccitt(rxdatapacket.data, length+5);
+	} // fi check CRC
+	if (pkt_crc==0) handle_pc_paket(length);	// crc correct
+      } // fi payload
+    } // fi was da
+  } while ( (rxbytes > 4) && ((--burst_cnt)>0) );
 }
 
 
@@ -554,9 +562,15 @@ void handle_pcdata(void) {
 
 void handle_hfdata(void) {
   static bool transmission = false;
-  if (RPTR_Flags != 0) {
-    if (RPTR_is_set(RPTR_RX_SYNC)) {
-      RPTR_clear(RPTR_RX_SYNC);
+  if (RPTR_is_set(RPTR_INDICATOR_MASK)) {
+    if (RPTR_is_set(RPTR_RX_1STPREAMBLE)) {
+      RPTR_clear(RPTR_RX_1STPREAMBLE);
+      ctrldata.head.cmd = RPTR_RXPREAMBLE;
+      append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
+      data_transmit((char *)&ctrldata, sizeof(ctrldata));
+    }
+    if (RPTR_is_set(RPTR_RX_FRAMESYNC)) {
+      RPTR_clear(RPTR_RX_FRAMESYNC);
       if (!transmission) {
         ctrldata.head.cmd = RPTR_RXSYNC;
         ctrldata.rxid++;
@@ -627,18 +641,6 @@ void handle_hfdata(void) {
 }
 
 
-void rptr_reset_inferface(void) {	// usb disconneced
-  if (data_received == cdc_received) {	// we use USB CDC interface
-    status_control &= 0xF0;
-    idle_timer_start();			// disable receiving
-    // Disable Reference-DAC MAX5820
-    set_dac_power_mode(TWI_DAC_POWERDOWN);
-    // Disable selected output of modulation DAC
-    dac_power_ctrl(0);
-  } // fi CDC used
-}
-
-
 void init_pcdata(void) {
   ctrldata.head.id  = FRAMESTARTID;
   ctrldata.head.len = swap16(sizeof(ctrldata)-5);
@@ -653,6 +655,23 @@ void init_pcdata(void) {
   voicedata.head.cmd  = RPTR_DATA;
   voicedata.rsvd[0]   = 0x00;
   voicedata.rsvd[1]   = 0x00;
+}
+
+
+void rptr_standby(void) {
+  status_control &= 0xF0;
+  idle_timer_start();			// disable receiving
+  // Disable Reference-DAC MAX5820
+  set_dac_power_mode(TWI_DAC_POWERDOWN);
+  // Disable selected output of modulation DAC
+  dac_power_ctrl(0);
+}
+
+
+void rptr_reset_inferface(void) {	// usb disconneced
+  if (data_received == cdc_received) {	// we use USB CDC interface
+    rptr_standby();
+  } // fi CDC used
 }
 
 
@@ -723,6 +742,11 @@ int main(void) {
     SLEEP();				// do nothing, until some IRQ wake the CPU
 
     watchdog();				// do external watchdog for STM706T
+    if (status_control&STA_WDENABLE_MASK) {	// active
+      if ( (Get_system_register(AVR32_COUNT)-last_pc_activity) > PCWD_TIMEOUT) {
+	rptr_standby();
+      }
+    } // fi do a PC-RX based watchdog
 
     handle_hfdata();			// look, if something to do with the HF interface
 

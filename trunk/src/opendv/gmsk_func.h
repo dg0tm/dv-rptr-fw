@@ -47,7 +47,8 @@
 
 // *** Debugging ***
 #ifdef DEBUG
-//#define DEMOD_DBG_BITBUFSIZE	11		// Max. 10 Bit until Toggle
+#define DEMOD_DBG_BITBUFSIZE	32
+#define DEMOD_DBG_DCBUFSIZE	32
 //#define DEBUG_CLOCK_RECOVER			// output filtered biased AF-input
 #endif
 
@@ -103,8 +104,11 @@ void	gmsk_demodulator_start(void);
 void	gmsk_demodulator_invert(int invert);
 
 void	gmsk_set_patternfunc(tpattern_func patternhandler);
+void	gmsk_set_unlockedfunc(tgmsk_func unlock_handler);
+
 void	gmsk_set_receivefkt(tgmsk_func fkt_received);
 void	gmsk_set_receivebuf(unsigned long *rxbuf, int bit_len);
+
 
 int	gmsk_channel_idle(void);
 
