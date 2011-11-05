@@ -641,6 +641,11 @@ INTERRUPT_FUNC gmsk_processbit_int(void) {
 }
 
 
+// empty function -> no NULL check every received bit necesary
+int no_patternhandler(unsigned int pattern, unsigned int bitpos) {
+  return 0;
+}
+
 //! @}
 
 
@@ -753,7 +758,7 @@ INTERRUPT_FUNC gmsk_runidle_int(void) {
   } else {
     if (gmsk_nextbitlen==0) {			// Kein neues Paket
 #if (DVRX_TIMER_CH == DVTX_TIMER_CH)
-      if (demod_syncstart_fkt != NULL) {	// set to Demod
+      if (demod_pattern_fkt != no_patternhandler) {	// set to Demod
 	gmsk_demodulator_start();
       } else				// No Sync-Func defined: Stop
 #endif
@@ -888,6 +893,18 @@ void gmsk_set_mod_hub(short int level) {
 }
 
 
+#ifdef GMSK_BANDWIDTHRECSIZE
+void gmsk_set_bandwidth(unsigned char BW) {
+  static const S16 GMSK_BandwidthRec[GMSK_BANDWIDTHRECSIZE] = {
+    GMSK_BW_625, GMSK_BW_1000, GMSK_BW_1250, GMSK_BW_2500
+  };
+  if (BW >= GMSK_BANDWIDTHRECSIZE) BW = 0;
+  dac_one_val  = +GMSK_BandwidthRec[BW]+DAC_MIDDLE;
+  dac_zero_val = -GMSK_BandwidthRec[BW]+DAC_MIDDLE;
+}
+#endif
+
+
 __inline void gmsk_set_txdelay(unsigned int millisec) {
   gmsk_txdelay = millisec;
 }
@@ -961,12 +978,6 @@ void gmsk_demodulator_start(void) {
 void gmsk_demodulator_invert(int invert) {
   demod_neg_level = (invert)?DEMOD_BITSET_MASK:0;
   demod_pos_level = (invert)?0:DEMOD_BITSET_MASK;  // set inverting
-}
-
-
-// empty function -> no NULL check every received bit necesary
-int no_patternhandler(unsigned int pattern, unsigned int bitpos) {
-  return 0;
 }
 
 

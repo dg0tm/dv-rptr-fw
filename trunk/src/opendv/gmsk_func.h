@@ -47,8 +47,8 @@
 
 // *** Debugging ***
 #ifdef DEBUG
-#define DEMOD_DBG_BITBUFSIZE	32
-#define DEMOD_DBG_DCBUFSIZE	32
+//#define DEMOD_DBG_BITBUFSIZE	32
+//#define DEMOD_DBG_DCBUFSIZE	32
 //#define DEBUG_CLOCK_RECOVER			// output filtered biased AF-input
 #endif
 
@@ -89,6 +89,9 @@ void	gmsk_modulator_stop(void);
 
 void	gmsk_set_mod_hub(short int level);	// free modulation-level adjustment
 // hint: negative values -> inverted
+#ifdef GMSK_BANDWIDTHRECSIZE
+void	gmsk_set_bandwidth(unsigned char BW);
+#endif
 
 void	gmsk_set_txdelay(unsigned int millisec);
 void	gmsk_set_reloadfunc(tgmsk_reloadfunc newfunc);
