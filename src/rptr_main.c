@@ -64,10 +64,11 @@
  * 		     feature TESTLOOP removed, start TX with START message, wait until HEADER message
  * 2011-10-30 V0.44  conditional PATTERN checking, gmsk_func module now independent of D-Star related
  * 2011-11-05 V0.50  RC1; watchdog-feature, fixed to 30s, PREAMBLE-Detection-Logic
+ * 2011-11-06 V1.00  same as RC1, changed standard config values (0.75Vss TXmod / 120ms TX-Delay
  *
  * ToDo:
- * - no new features for release V1.00
  * - USB not working after reset cmd, maybe a USB-unplug msg is needed
+ * + no new features for release V1.00
  * + first SYNC detect -> Message (early switch on Transceiver)
  * + PC watchdog
  * + RSSI / SQL sampling while receiving
@@ -161,7 +162,7 @@ typedef enum {
 #define STA_PCWATCHDOG		0x04
 
 
-// *** Globale Variablen ***
+// *** global variables ***
 
 U8		status_control  = STA_NOCONFIG_MASK|STA_CANDUPLEX_MASK;	// Holds persitent control-flags
 U8		status_state;	// Holds state of RX/TX
@@ -170,7 +171,7 @@ U8		current_txid;
 U32		last_pc_activity;	// timestamp, updated every valid PC-packet handled
 
 // functions used for pc/gateway communication:
-// pre-initialisation to USB-CDC, but easy reconfigurable to RS232
+// pre-initialization to USB-CDC, but easy reconfigurable to RS232
 tdata_rx_fct	data_received	= cdc_received;
 tdata_cpy_rx	data_copyrx	= cdc_copyblock;
 tdata_tx_fct	data_transmit	= cdc_transmit;
@@ -191,6 +192,7 @@ theadrpcdata	headerdata;
 tvoicepcdata	voicedata;	// Voice+Slowdata from HF
 
 
+
 // configuration routines - physical config
 typedef struct PACKED_DATA {
   unsigned char flags;
@@ -205,10 +207,16 @@ typedef struct PACKED_DATA {
 
 t_config_0 CONFIG_C0 = {
     0x00,			// flags
-    1000 * 256 / V_Ref,		// modulation voltage peak-peak ~ 1.00V
-    GMSK_STDTXDELAY<<8		// little endian!
+    750 * 256 / V_Ref,		// modulation voltage peak-peak ~ 0.75V
+    GMSK_STDTXDELAY<<8		// little endian! Std-Value 120ms
 };
 
+
+
+__inline void pc_send_byte(U8 data) {
+  answer.head.len = 2;
+  answer.data[PKT_PARAM_IDX] = data;
+}
 
 
 void update_status(void) {
@@ -227,6 +235,10 @@ void update_status(void) {
   if (RPTR_is_set(RPTR_TRANSMITTING)) status_state |= STA_TRANSMITTING;
 }
 
+// *** configuration ***
+/*! \name MAIN configuration routines
+ */
+//! @{
 
 void cfg_apply(void) {
   U16 txd;
@@ -282,12 +294,13 @@ bool config_setup(const char *config_data, int len) {
   return true;
 }
 
-__inline void pc_send_byte(U8 data) {
-  answer.head.len = 2;
-  answer.data[PKT_PARAM_IDX] = data;
-}
+//! @}
 
 
+// *** special function command set ***
+/*! \name MAIN special functions PC handle
+ */
+//! @{
 
 #define SFC_GET_CURR_RSSI	0x08
 
@@ -343,6 +356,13 @@ void handle_special_func_cmd(int len) {
   } // esle hctiws
 }
 
+//! @}
+
+
+// *** handle PC (PCP2) packets ***
+/*! \name MAIN PCP2 packet handling
+ */
+//! @{
 
 __inline void add_multi_voice_2_rptr(int len) {
   unsigned int pkt_cnt = (len-7) / sizeof(tds_voicedata);
@@ -502,6 +522,13 @@ __inline void handle_pc_paket(int len) {
   } // fi send
 }
 
+//! @}
+
+
+// *** handle HF requests / RPTR_flag ***
+/*! \name MAIN HF RPTR flag handling
+ */
+//! @{
 
 // handle_pcdata() testet, ob im Receive-Buffer Paket-Daten (auch unvollst.) liegen
 // und kopiert diese nach 'rxdatapaket' um.
@@ -529,7 +556,7 @@ void handle_pcdata(void) {
 	} // fi incomplete
       } // esle
       if (length > 0) {
-  //    if (rxdatapacket.head.id == FRAMESTARTID) { // packet begins with a valid frame / checked before
+        // packet begins with a valid frame / FRAMESTARTID checked before
 	U16 pkt_crc = 0;
 	if (status_control&STA_CRCENABLE_MASK) {	// check CRC only, if needed.
 	  pkt_crc = crc_ccitt(rxdatapacket.data, length+5);
@@ -639,6 +666,9 @@ void handle_hfdata(void) {
   // Testet, ob was emfangen wurde.
   // sendet sofort an pc
 }
+
+//! @}
+
 
 
 void init_pcdata(void) {
