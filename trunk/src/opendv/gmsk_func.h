@@ -34,7 +34,7 @@
 // *** GMSK-Modulator ***
 #define GMSK_OVERSAMPLING	4		// >= 4, only even values allowed!
 
-#define GMSK_STDTXDELAY		30		// Time in [ms] to wait after gmsk_transmit()
+#define GMSK_STDTXDELAY		120		// Time in [ms] to wait after gmsk_transmit()
 #define GMSK_TXDRESOLUTION	2		// 2ms Steps
 
 // *** GMSK-Demodulator ***
