@@ -45,11 +45,16 @@ char	twi_busy(void);
 void	twi_pause(void);
 void	twi_continue(void);
 
+
 tTWIresult twi_write(unsigned char adr, const char *data, unsigned int len, twi_handler RetFunc);
 tTWIresult twi_read(unsigned char adr, char *dest, unsigned int len, twi_handler RetFunc);
 
 tTWIresult ee_write(unsigned int adr, const char *data, unsigned int len, twi_handler RetFunc);
 tTWIresult ee_read(unsigned int adr, char *dest, unsigned int len, twi_handler RetFunc);
+
+// Register R/W function: Handling a 1-4 byte register / addressing with a 2nd byte
+tTWIresult reg_write(unsigned char adr, unsigned char reg, unsigned int value, char reg_size, twi_handler RetFunc);
+tTWIresult reg_read(unsigned char adr,  unsigned char reg, char *dest, char reg_size, twi_handler RetFunc);
 
 
 #endif

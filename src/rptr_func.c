@@ -57,6 +57,8 @@
 #include "int_func.h"		// idle_timer()
 #include "twi_func.h"
 
+#include "transceiver.h"
+
 #include "compiler.h"
 #include <string.h>
 
@@ -142,6 +144,7 @@ __inline void dstar_scramble_data(tds_voicedata *dest) {
 void rptr_stopped(void) {
   gmsk_set_reloadfunc(NULL);
   disable_ptt();
+  trx_receive();
   RPTR_Flags &= ~RPTR_TRANSMITTING;
   LED_Clear(LED_RED);
 #if (DVTX_TIMER_CH==IDLE_TIMER_CH)
@@ -564,6 +567,7 @@ __inline void rptr_forcefirstsync(void) {
 void rptr_transmit_preamble(void) {
   if (!is_pttactive()) {
     enable_ptt();
+    trx_transmit();
     TxVoice_RdPos = 0;				// counts timeout of preamble loop
     gmsk_set_reloadfunc(rptr_preamble);		// transmit preamble, until rptr_transmit() or timeout
     gmsk_transmit((U32 *)preamble_dstar, 32, 1);
@@ -588,6 +592,7 @@ void rptr_transmit(void) {
     } // esle fi
   } else {
     enable_ptt();
+    trx_transmit();
     gmsk_set_reloadfunc(rptr_transmit_header);	// after TXed peamble + START-pattern, load header
     gmsk_transmit((U32 *)preamble_dstar, DSTAR_PREAMPLELEN, 1);
     RPTR_Flags |= RPTR_TRANSMITTING;

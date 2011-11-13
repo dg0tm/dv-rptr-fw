@@ -41,12 +41,6 @@ typedef enum {
 #define FREEZE()
 #endif
 
-// LED's
-#define leds_off()	{ gpio0_set(RED_LED); gpio0_set(GREEN_LED); }
-#define leds_red()	{ gpio0_clr(RED_LED); gpio0_set(GREEN_LED); }
-#define leds_green()	{ gpio0_set(RED_LED); gpio0_clr(GREEN_LED); }
-#define leds_yellow()	{ gpio0_clr(RED_LED); gpio0_clr(GREEN_LED); }
-
 void	gpio0_set(unsigned int pin);
 void	gpio0_clr(unsigned int pin);
 void	gpio0_tgl(unsigned int pin);
