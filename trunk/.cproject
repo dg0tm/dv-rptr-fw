@@ -37,6 +37,7 @@
 <listOptionValue builtIn="false" value="../src/common"/>
 <listOptionValue builtIn="false" value="../src/hardware"/>
 <listOptionValue builtIn="false" value="../src/opendv"/>
+<listOptionValue builtIn="false" value="../src/transceiver"/>
 <listOptionValue builtIn="false" value="../src/FRAMEWORK"/>
 <listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/INTC"/>
 <listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB/ENUM/DEVICE"/>
@@ -790,6 +791,7 @@
 <listOptionValue builtIn="false" value="../src/common"/>
 <listOptionValue builtIn="false" value="../src/hardware"/>
 <listOptionValue builtIn="false" value="../src/opendv"/>
+<listOptionValue builtIn="false" value="../src/transceiver"/>
 <listOptionValue builtIn="false" value="../src/FRAMEWORK"/>
 <listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/INTC"/>
 <listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB/ENUM/DEVICE"/>
@@ -1544,6 +1546,7 @@
 <listOptionValue builtIn="false" value="../src/common"/>
 <listOptionValue builtIn="false" value="../src/hardware"/>
 <listOptionValue builtIn="false" value="../src/opendv"/>
+<listOptionValue builtIn="false" value="../src/transceiver"/>
 <listOptionValue builtIn="false" value="../src/FRAMEWORK"/>
 <listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/INTC"/>
 <listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB/ENUM/DEVICE"/>

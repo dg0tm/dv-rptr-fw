@@ -53,7 +53,7 @@
 
 
 typedef enum {
-  TWInop, TWIreset, TWIread, TWIwrite, EEread, EEwrite
+  TWInop, TWIreset, TWIread, TWIwrite, EEread, EEwrite, REGread, REGwrite
 } tTWIcmd;
 
 typedef struct {
@@ -96,6 +96,9 @@ void twi_process_job(void) {
     TWIIO.mmr  = actjob->device << AVR32_TWI_MMR_DADR_OFFSET;
     TWIIO.iadr = actjob->addr;
     // MREAD=0, IADRZ=0 (no int. adr)
+    if (actjob->cmd==REGread)
+      TWIIO.mmr |= 1 << AVR32_TWI_MMR_IADRSZ_OFFSET;	// write 1-Byte Address before
+
     switch (actjob->cmd) {
     case TWInop:
     case TWIreset:
@@ -103,6 +106,7 @@ void twi_process_job(void) {
       break;
     case EEread:
       TWIIO.mmr |=  2 << AVR32_TWI_MMR_IADRSZ_OFFSET;	// read 2-Byte Address before
+    case REGread:
     case TWIread:
       TWIIO.rhr;	// read it ?!
       TWI_PDAC.psr = AVR32_PDCA_PID_TWI_RX;
@@ -120,6 +124,16 @@ void twi_process_job(void) {
     case TWIwrite:
       TWI_PDAC.psr = AVR32_PDCA_PID_TWI_TX;
       twi_startpdca(actjob);
+      return;
+    case REGwrite:
+      TWIIO.mmr |= 1 << AVR32_TWI_MMR_IADRSZ_OFFSET;	// write 1-Byte Address before
+      TWI_PDAC.psr = AVR32_PDCA_PID_TWI_TX;
+      // like startpdca, but with "embedded" data
+      TWI_PDAC.mar = (U32)(&(actjob->buffer));
+      TWI_PDAC.tcr = actjob->len;
+      TWIIO.ier    = AVR32_TWI_IER_TXCOMP_MASK|AVR32_TWI_IER_NACK_MASK;
+      TWIIO.cr     = AVR32_TWI_MSEN_MASK;
+      TWI_PDAC.cr  = AVR32_PDCA_TEN_MASK;
       return;
     } // hctiws cmd
   }  // elihw next
@@ -268,6 +282,32 @@ tTWIresult ee_read(unsigned int adr, char *dest, unsigned int len, twi_handler R
   }
   return TWIok;
 }
+
+
+tTWIresult reg_write(unsigned char adr, unsigned char reg, unsigned int value, char reg_size, twi_handler RetFunc) {
+  if ( (TWIwjob-TWIrjob) >= TWIQueueSize ) {
+    return TWIbusy;
+  } else if ((reg_size==0)||(reg_size>4)){
+    return TWIerror;
+  } else {
+    value <<= (4-reg_size)*8;		// shift bytes to high (big endian)
+    ttwijob *newjob = &TWIjobs[TWIwjob&TWIQueueMask];
+    newjob->cmd    = REGwrite;
+    newjob->device = adr;
+    newjob->addr   = reg;
+    newjob->buffer = (char *)value;
+    newjob->len    = reg_size;
+    newjob->func   = RetFunc;
+    TWIwjob++;
+    if ((TWIIO.imr & AVR32_TWI_IMR_TXCOMP_MASK)==0) {
+      twi_process_job();
+    } // fi idle
+  } // esle
+  return TWIok;
+}
+
+
+tTWIresult reg_read(unsigned char adr,  unsigned char reg, char *dest, char reg_size, twi_handler RetFunc);
 
 
 char twi_busy(void) {

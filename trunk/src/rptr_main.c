@@ -89,6 +89,7 @@
 #include "slowdata.h"		// later used on own (idle) transmittings
 #include "gmsk_func.h"		// configuration
 #include "controls.h"
+#include "transceiver.h"
 
 #include "gpio_func.h"		// GPIO-functions and macros (PTT, LEDs...)
 #include "int_func.h"		// idle_timer()
@@ -167,6 +168,8 @@ typedef enum {
 U8		status_control  = STA_NOCONFIG_MASK|STA_CANDUPLEX_MASK;	// Holds persitent control-flags
 U8		status_state;	// Holds state of RX/TX
 U8		current_txid;
+
+U32		trx_capabilities;
 
 U32		last_pc_activity;	// timestamp, updated every valid PC-packet handled
 
@@ -282,6 +285,10 @@ bool config_setup(const char *config_data, int len) {
     case 0xC0:
       if (block_len==sizeof(CONFIG_C0)) cfg_write_c0(config_data+2); else return false;
       break;
+    case 0XC1:
+      if (block_len==CONFIG_C1_SIZE) cfg_write_c1(config_data+2); else return false;
+      if (status_control & STA_RXENABLE_MASK) trx_receive();	// Enable receiving...
+      break;
     default:
       // ignore other config blocks
       break;
@@ -306,8 +313,42 @@ bool config_setup(const char *config_data, int len) {
 
 #define SFC_CORRECT_TX_CLOCK	0x10
 
+#define SFC_TWI_ACCESS		0x20
+#define SFC_TWI_WRITE		0x21
+#define SFC_TWI_READ		0x22	// no subadr
+#define SFC_TWI_READREG		0x23	// 1 Byte "register" address
+#define SFC_TWI_READMEM		0x24	// 2 Byte address
+
 #define SFC_RESET		0xF1
 #define SFC_FORCE_BOOTLOADER	0xF2
+
+
+#include "twi_func.h"
+
+void sfc_twi_wrt_return(tTWIresult res, unsigned int len) {
+  // nicht schön aber selten
+  if (res == TWIok) {
+    answer.data[PKT_PARAM_IDX] = SFC_TWI_WRITE;
+    answer.data[PKT_PARAM_IDX+1] = ACK;
+    answer.head.len = 3;
+} else {
+    answer.data[PKT_PARAM_IDX] = SFC_TWI_WRITE;
+    answer.data[PKT_PARAM_IDX+1] = NAK;
+    answer.data[PKT_PARAM_IDX+2] = (char)res;
+    answer.data[PKT_PARAM_IDX+3] = len & 0xFF;
+    answer.data[PKT_PARAM_IDX+4] = (len >> 8) & 0xFF;
+    answer.head.len = 6;
+  }
+  if ((answer.head.len > 0)&&(answer.head.len<(PAKETBUFFERSIZE-4))) {
+    U32 anslen = answer.head.len+5;
+    answer.head.id  = FRAMESTARTID;
+    answer.head.cmd = 0x80|rxdatapacket.head.cmd;
+    answer.head.len = swap16(answer.head.len);
+    append_crc_ccitt(answer.data, anslen);
+    data_transmit(answer.data, anslen);
+  } // fi send
+
+}
 
 
 // handle_special_func_cmd()
@@ -325,6 +366,10 @@ void handle_special_func_cmd(int len) {
       gmsk_adjusttxperiod(parameter);
       pc_send_byte(ACK);
     } else pc_send_byte(NAK);
+    break;
+  case SFC_TWI_WRITE:
+    if (len > 3)
+      twi_write(rxdatapacket.data[PKT_PARAM_IDX+1], &rxdatapacket.data[PKT_PARAM_IDX+2], len-3, sfc_twi_wrt_return);
     break;
   case SFC_GET_CURR_RSSI:
     parameter = gmsk_get_rssi_current();
@@ -408,6 +453,7 @@ __inline void handle_pc_paket(int len) {
       U8 new_control = (status_control & 0xF0) | (rxdatapacket.data[PKT_PARAM_IDX] & 0x0F);
       if ((new_control^status_control) & STA_RXENABLE_MASK) {
 	if (new_control & STA_RXENABLE_MASK) {
+	  trx_receive();			// set receiving
 	  rptr_receive();			// enable receiving
 	} else {
 	  idle_timer_start();			// disable receiving
@@ -438,6 +484,7 @@ __inline void handle_pc_paket(int len) {
   case RPTR_GET_CONFIG:
     if (len==1) {			// request all config
       char *nextblock = cfg_read_c0(answer.data+PKT_PARAM_IDX);
+      nextblock = cfg_read_c1(nextblock);
       //...
       answer.head.len = nextblock - answer.data - 3;
     } else if (len==2) {		// request a single block
@@ -446,7 +493,11 @@ __inline void handle_pc_paket(int len) {
 	cfg_read_c0(answer.data+PKT_PARAM_IDX);
 	answer.head.len = sizeof(CONFIG_C0)+3;
 	break;
-      default:
+      case 0xC1:
+	cfg_read_c1(answer.data+PKT_PARAM_IDX);
+ 	answer.head.len = CONFIG_C1_SIZE+3;
+ 	break;
+     default:
 	pc_send_byte(NAK);
 	break;
       }
@@ -690,6 +741,7 @@ void init_pcdata(void) {
 
 void rptr_standby(void) {
   status_control &= 0xF0;
+  trx_standby();
   idle_timer_start();			// disable receiving
   // Disable Reference-DAC MAX5820
   set_dac_power_mode(TWI_DAC_POWERDOWN);
@@ -761,6 +813,8 @@ int main(void) {
 
   idle_timer_start();			// keep ÂµC alive to handle external WD, if
   // no other activity (USB)
+
+  trx_capabilities = trx_init();	// init optional TRX module
 
   //set_dac_power_mode(TWI_DAC_POWERUP);
   // Enable Reference-DAC MAX5820 (called, if TX swichted on)
