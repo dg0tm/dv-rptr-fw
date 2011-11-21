@@ -27,7 +27,7 @@
 #ifndef DEFINES_H_
 #define DEFINES_H_
 
-#define FIRMWAREVERSION		0x1100
+#define FIRMWAREVERSION		0x1101
 
 // Version Vxx.yy (last digit is char ' ', a, b...)
 
@@ -39,7 +39,7 @@
  * Bugfixlevel   c - Increased with one or more bugfixes (at the same time)
  */
 
-#define RELEASE_STRING		"2011-11-13"	// Release Date
+#define RELEASE_STRING		"2011-11-17"	// Release Date
 
 
 #define VERSION_IDENT		"DV-RPTR R." RELEASE_STRING

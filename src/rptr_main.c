@@ -65,6 +65,8 @@
  * 2011-10-30 V0.44  conditional PATTERN checking, gmsk_func module now independent of D-Star related
  * 2011-11-05 V0.50  RC1; watchdog-feature, fixed to 30s, PREAMBLE-Detection-Logic
  * 2011-11-06 V1.00  same as RC1, changed standard config values (0.75Vss TXmod / 120ms TX-Delay
+ * 2011-11-13 V1.10  first version with a simple TRX control
+ * 2011-11-17 V1.10a a few changes allows Cfg-Applying with transmitting
  *
  * ToDo:
  * - USB not working after reset cmd, maybe a USB-unplug msg is needed
@@ -258,7 +260,6 @@ void cfg_apply(void) {
   txd = swap16(CONFIG_C0.txdelay);
   if (txd > MAX_ALLOWED_TXDELAY) txd = MAX_ALLOWED_TXDELAY;
   gmsk_set_txdelay(txd);
-  if (current_txid!=0xFE) current_txid = 0xFF;
 }
 
 
@@ -273,8 +274,12 @@ char *cfg_read_c0(char *config_buffer) {
 void cfg_write_c0(const char *config_data) {
   memcpy(&CONFIG_C0, config_data, sizeof(CONFIG_C0));
   cfg_apply();
+  if ((status_control & STA_NOCONFIG_MASK)||(!RPTR_is_set(RPTR_TRANSMITTING))) {
+    if (current_txid!=0xFE) current_txid = 0xFF;
+  }
   status_control &= ~STA_NOCONFIG_MASK;		// clear no-config bit
 }
+
 
 
 bool config_setup(const char *config_data, int len) {
@@ -286,6 +291,7 @@ bool config_setup(const char *config_data, int len) {
       if (block_len==sizeof(CONFIG_C0)) cfg_write_c0(config_data+2); else return false;
       break;
     case 0XC1:
+      trx_standby();
       if (block_len==CONFIG_C1_SIZE) cfg_write_c1(config_data+2); else return false;
       if (status_control & STA_RXENABLE_MASK) trx_receive();	// Enable receiving...
       break;
@@ -326,7 +332,7 @@ bool config_setup(const char *config_data, int len) {
 #include "twi_func.h"
 
 void sfc_twi_wrt_return(tTWIresult res, unsigned int len) {
-  // nicht schön aber selten
+  // nicht schï¿½n aber selten
   if (res == TWIok) {
     answer.data[PKT_PARAM_IDX] = SFC_TWI_WRITE;
     answer.data[PKT_PARAM_IDX+1] = ACK;
@@ -583,7 +589,7 @@ __inline void handle_pc_paket(int len) {
 
 // handle_pcdata() testet, ob im Receive-Buffer Paket-Daten (auch unvollst.) liegen
 // und kopiert diese nach 'rxdatapaket' um.
-// Bei gültigen Paketen, wird 'handle_pc_paket()'
+// Bei gï¿½ltigen Paketen, wird 'handle_pc_paket()'
 // aufgerufen.
 void handle_pcdata(void) {
   int rxbytes, burst_cnt = 5;
