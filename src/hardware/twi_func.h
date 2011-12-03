@@ -31,8 +31,9 @@
 #define TWICLOCK	400000L
 
 typedef enum {
-  TWIok, TWIbusy, TWInak, TWIerror	//TWInodevice,
+  TWIok, TWIbusy, TWInak, TWIerror
 } tTWIresult;
+
 
 typedef void (*twi_handler)(tTWIresult, unsigned int);
 
