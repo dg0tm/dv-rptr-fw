@@ -39,10 +39,11 @@
  * Bugfixlevel   c - Increased with one or more bugfixes (at the same time)
  */
 
-#define RELEASE_STRING		"2011-11-17"	// Release Date
+#define RELEASE_STRING		"2011-12-03"	// Release Date
 
 
 #define VERSION_IDENT		"DV-RPTR R." RELEASE_STRING
+
 
 #define PROGRAM_START_OFFSET	0x00004000
 #define SERIALNUMBER_ADDRESS	0x80003FFC	// Flashstart+StartOfs-4

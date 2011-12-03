@@ -43,7 +43,7 @@ typedef enum {
 typedef tRXTOmode (*trxtimeoutfunc)(int);
 
 
-void	rs232_init(unsigned long baudrate, tFlowCtrl flow);
+void	rs232_init(unsigned int baudrate, tFlowCtrl flow);
 void	rs232_exit(void);
 
 void	rs232_transmit(const char *data, int len);
@@ -55,7 +55,7 @@ void	rs232_flushrx(void);		// löscht den Inhalt des Rx
 int	rs232_copyblock(char *destbuffer, int len);
 
 void	rs232_settimeout(unsigned int bittimes);
-void	rs232_settimeoutms(unsigned long baudrate, unsigned int ms);
+void	rs232_settimeoutms(unsigned int ms);
 
 void	rs232_enabletimeout(trxtimeoutfunc RXTOfunc, tRXTOmode startmode);
 void	rs232_disabletimeout(void);
@@ -63,6 +63,10 @@ void	rs232_disabletimeout(void);
 int	rs232_textlinecomplete(void);	// Länge einer empfangenen Textzeile
 void	rs232_nexttextline(void);
 void	rs232_skiptextline(void);
+
+unsigned char	rs232_look_byte(int pos);
+unsigned short	rs232_look_leword(int pos);
+
 
 #endif // RS232_FUNC_H_
 

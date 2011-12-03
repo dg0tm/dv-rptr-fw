@@ -27,6 +27,9 @@
  *
  * Report:
  * 2011-07-03  JA  BugFix: ee_write works now with "ack polling", no additional char written
+ *
+ * ToDo / Bugs:
+ * Various bugs bring dvfw to hang (display / wait non-installed EEProm!!!
  */
 
 
@@ -46,8 +49,8 @@
 #define TWICHDIV 	((TWI_DIV+1)/2-4)
 #define TWICLDIV 	((TWI_DIV+1)/2-4)
 
-#define TWIQueueSize	32
-#define TWIQueueMask	0x001F
+#define TWIQueueMask	0x007F		// big, normally 1F
+#define TWIQueueSize	(TWIQueueMask+1)
 
 #define TWI_EE_DEVICE	0x50
 
@@ -91,7 +94,7 @@ __inline void twi_startmultipleread(const ttwijob *job) {
 
 
 void twi_process_job(void) {
-  if (twi_running) while (TWIrjob != TWIwjob) {		// next job?
+  if (twi_running && (TWIrjob != TWIwjob)) {		// next job?
     ttwijob *actjob = &TWIjobs[TWIrjob&TWIQueueMask];
     TWIIO.mmr  = actjob->device << AVR32_TWI_MMR_DADR_OFFSET;
     TWIIO.iadr = actjob->addr;
@@ -136,7 +139,7 @@ void twi_process_job(void) {
       TWI_PDAC.cr  = AVR32_PDCA_TEN_MASK;
       return;
     } // hctiws cmd
-  }  // elihw next
+  }  // fi next
   TWIIO.idr = AVR32_TWI_IDR_TXCOMP_MASK|AVR32_TWI_IDR_NACK_MASK;	// Disable
 }
 
@@ -150,13 +153,13 @@ INTERRUPT_FUNC twi_stoprd_int(void) {
 
 
 INTERRUPT_FUNC twi_interrupt(void) {
-  U32 twisr = TWIIO.sr;
-  U32 leftb = TWI_PDAC.tcr;			// Bytes transfered from PDCA
-  ttwijob *currjob = &TWIjobs[TWIrjob&TWIQueueMask];	// pointer to current job
-  TWIrjob++;					// next job / this one is done
-  TWI_PDAC.cr = AVR32_PDCA_ECLR_MASK|AVR32_PDCA_TDIS_MASK;	// PDCA stop
+  ttwijob *currjob;
+  U32 twisr   = TWIIO.sr;
+  U32 leftb   = TWI_PDAC.tcr;			// Bytes transfered from PDCA
   TWIIO.cr    = AVR32_TWI_MSDIS_MASK;		// TWI stop
-  twi_process_job();
+  TWI_PDAC.cr = AVR32_PDCA_ECLR_MASK|AVR32_PDCA_TDIS_MASK;	// TWI-PDCA stop
+  // handle callback of curr job
+  currjob = &TWIjobs[TWIrjob&TWIQueueMask];	// pointer to current job
   if (currjob->func != NULL) {
     if (twisr&AVR32_TWI_SR_NACK_MASK) {
       /*U32 txed_data = currjob->len - leftb - 1;
@@ -170,6 +173,10 @@ INTERRUPT_FUNC twi_interrupt(void) {
       currjob->func((leftb==0)?TWIok:TWIerror, currjob->len - leftb);
     }
   } // fi function definded
+
+  TWIrjob++;					// next job / this one is done
+  twi_process_job();
+
 } // end int
 
 
@@ -189,19 +196,21 @@ void twi_exit(void) {
 
 void twi_init(void) {
   // ToDo: pm_enable_TWI()...
-  TWIIO.idr = 0xFFFF;
-  TWIIO.cr = AVR32_TWI_SWRST_MASK|AVR32_TWI_SVDIS_MASK;
+  TWIIO.idr  = 0xFFFF;
+  TWIIO.cr   = AVR32_TWI_SWRST_MASK|AVR32_TWI_SVDIS_MASK;
   TWIIO.cwgr = (TWICKDIV << AVR32_TWI_CWGR_CKDIV_OFFSET)|	\
     (TWICHDIV << AVR32_TWI_CWGR_CHDIV_OFFSET)|
     (TWICLDIV << AVR32_TWI_CWGR_CLDIV_OFFSET);
-//  TWIIO.cr = AVR32_TWI_MSEN_MASK;		// switch-on direct before transmit/receive
+
   TWI_PDAC.idr = 0x0FFF;
   TWI_PDAC.cr  = AVR32_PDCA_ECLR_MASK|AVR32_PDCA_TDIS_MASK;
   TWI_PDAC.mr  = 0x00 << AVR32_PDCA_SIZE_OFFSET; // Byte
   TWI_PDAC.tcrr= 0;
-  TWIrjob = TWIwjob = 0;
-  INTC_register_interrupt(&twi_interrupt, TWIIRQ, TWI_INTPRIO);
-  INTC_register_interrupt(&twi_stoprd_int, AVR32_PDCA_IRQ_0+TWI_CHANNEL, TWI_INTPRIO);
+
+  TWIrjob = 0;
+  TWIwjob = 0;
+  INTC_register_interrupt(twi_interrupt, TWIIRQ, TWI_INTPRIO);
+  INTC_register_interrupt(twi_stoprd_int, AVR32_PDCA_IRQ_0+TWI_CHANNEL, TWI_INTPRIO);
   twi_running = TRUE;
 }
 
@@ -307,7 +316,9 @@ tTWIresult reg_write(unsigned char adr, unsigned char reg, unsigned int value, c
 }
 
 
-tTWIresult reg_read(unsigned char adr,  unsigned char reg, char *dest, char reg_size, twi_handler RetFunc);
+tTWIresult reg_read(unsigned char adr, unsigned char reg, char *dest, char reg_size, twi_handler RetFunc) {
+  return TWIerror;	// no implementation jet
+}
 
 
 char twi_busy(void) {

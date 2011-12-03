@@ -88,7 +88,6 @@
 #include "dac_func.h"
 #include "crc.h"
 #include "rptr_func.h"		// realtime-handler part of HF I/O
-#include "slowdata.h"		// later used on own (idle) transmittings
 #include "gmsk_func.h"		// configuration
 #include "controls.h"
 #include "transceiver.h"
@@ -109,6 +108,8 @@
 typedef int (*tdata_rx_fct)(void);		// Data-Received function (return #bytes)
 typedef int (*tdata_cpy_rx)(char *, int);	// Copy received data
 typedef void (*tdata_tx_fct)(const char *, int); // Data-Transmit function
+typedef unsigned char (*tdata_look_b)(int);	// Data-Look-Byte function
+typedef unsigned short (*tdata_look_lew)(int);	// Data-Look-Word function (Little Endian)
 
 
 typedef struct PACKED_DATA {
@@ -181,6 +182,9 @@ tdata_rx_fct	data_received	= cdc_received;
 tdata_cpy_rx	data_copyrx	= cdc_copyblock;
 tdata_tx_fct	data_transmit	= cdc_transmit;
 tfunction	data_flushrx	= cdc_flushrx;
+tdata_look_b	data_look_byte  = cdc_look_byte;
+tdata_look_lew	data_look_word  = cdc_look_leword;
+
 
 #define DATA_TIMEOUT_MS		5	// 5ms time gap allowed for incoming data
 
@@ -597,10 +601,10 @@ void handle_pcdata(void) {
     rxbytes = data_received();
     if (rxbytes > 4) {					// a frame shout be have D0 length and crc
       U16 length = 0;
-      if (cdc_look_byte(0) != FRAMESTARTID) {
+      if (data_look_byte(0) != FRAMESTARTID) {
 	data_flushrx();		// destroy garbage on COM/USB
       } else {
-	length = cdc_look_leword(1);
+	length = data_look_word(1);
 	if (length <= (sizeof(rxdatapacket)-5)) {
 	  if (length <= (rxbytes-5)) {
 	    data_copyrx(rxdatapacket.data, length+5);

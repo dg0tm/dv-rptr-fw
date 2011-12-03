@@ -25,7 +25,7 @@
  *
  * 2010-05-01	TimeOut-Mechanism
  * 2011-04-17	BugFix rs232_copyblock (return-value of memcpy is not next ptr)
- *
+ * 2011-11-27	add variable rs232_baudrate -> setting timeouts w/o knowing it
  */
 
 
@@ -42,6 +42,8 @@
 #define RS232_PDAC_TX	AVR32_PDCA.channel[RS232_TXCH]
 
 
+U32	rs232_baudrate;
+
 U8	rs232_rxbuffer[RS232_RXBUFFERSIZE];
 int	rs232_rdpos, rs232_txtendpos;
 
@@ -50,6 +52,8 @@ trxtimeoutfunc	TimeOutHandler;
 #define rs232_wrpos	(RS232_RXBUFFERSIZE-RS232_PDAC_RX.tcr)
 
 #define rs232_rxlen	((2*RS232_RXBUFFERSIZE-RS232_PDAC_RX.tcr-rs232_rdpos)%RS232_RXBUFFERSIZE)
+
+
 
 /*! \name RS232 Interrupt Functions
  */
@@ -116,7 +120,7 @@ void rs232_exit(void) {
 }
 
 
-void rs232_init(unsigned long baudrate, tFlowCtrl flow) {
+void rs232_init(unsigned int baudrate, tFlowCtrl flow) {
   rs232_exit();
   rs232_auto_on();
   TimeOutHandler = NULL;
@@ -136,12 +140,13 @@ void rs232_init(unsigned long baudrate, tFlowCtrl flow) {
     (AVR32_USART_MR_PAR_NONE << AVR32_USART_MR_PAR_OFFSET) |	// no Parity
     ((8 - 5) << AVR32_USART_MR_CHRL_OFFSET) |	// char length = 8
     (AVR32_USART_MR_MODE_NORMAL << AVR32_USART_MR_MODE_OFFSET);	// automatic Echo
-  RS232.brgr = (MASTERCLOCK+(baudrate<<3))/(baudrate<<4);
+  RS232.brgr = (MASTERCLOCK+((unsigned long)baudrate<<3))/((unsigned long)baudrate<<4);
   RS232.rtor = RS232_DEFAULTTIMEOUT;		// Receive TimeOut Register
   RS232.cr   = AVR32_USART_CR_RXEN_MASK|AVR32_USART_CR_TXEN_MASK| \
     AVR32_USART_CR_RSTSTA_MASK|AVR32_USART_CR_STTTO_MASK;
   // Reset Status im CSR & Start Waiting TimeOut (löscht TIMEOUT Bit in CSR)
   RS232_PDAC_TX.cr  = AVR32_PDCA_ECLR_MASK|AVR32_PDCA_TEN_MASK;
+  rs232_baudrate = (MASTERCLOCK/16) / RS232.brgr;
 }
 
 
@@ -189,8 +194,9 @@ __inline void rs232_settimeout(unsigned int bittimes) {
   RS232.rtor = bittimes;	// Receive TimeOut Register
 }
 
-void rs232_settimeoutms(unsigned long baudrate, unsigned int ms) {
-  RS232.rtor = ((baudrate*ms)+500)/1000;	// Receive TimeOut Register
+
+void rs232_settimeoutms(unsigned int ms) {
+  RS232.rtor = ((rs232_baudrate*ms)+500)/1000;	// Receive TimeOut Register
 }
 
 
@@ -242,6 +248,20 @@ void rs232_skiptextline(void) {
     rs232_txtendpos++;
   rs232_rdpos = rs232_txtendpos;
 }
+
+
+unsigned char rs232_look_byte(int pos) {
+  return rs232_rxbuffer[(rs232_rdpos+pos) % RS232_RXBUFFERSIZE];
+}
+
+
+unsigned short rs232_look_leword(int pos) {
+  U16 result;
+  result = (rs232_rxbuffer[(rs232_rdpos+pos+1) % RS232_RXBUFFERSIZE] << 8) | \
+      rs232_rxbuffer[(rs232_rdpos+pos) % RS232_RXBUFFERSIZE];
+  return result;
+}
+
 
 //! @}
 
