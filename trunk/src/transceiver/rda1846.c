@@ -95,7 +95,8 @@
 #endif
 
 
-bool	rda_init_reply, rda_present, rda2_present;
+volatile bool rda_init_reply;
+U32	rda_capabilities;
 U16 	rda_ctrlreg;
 U16	rda_rfband;
 U32	rda_rx_freq, rda_tx_freq;
@@ -103,24 +104,26 @@ U32	rda_rx_freq, rda_tx_freq;
 
 
 void reset_rda_handler(tTWIresult res, unsigned int len) {
-  rda_present = (res == TWIok);
+  if (res == TWIok)
+    rda_capabilities |= TRXCAP_AVAIL;
   rda_init_reply = true;
 }
 
 
 #ifdef SUPPORT_2ND_IC
 void reset_rda2_handler(tTWIresult res, unsigned int len) {
-  rda2_present = (res == TWIok);
-  rda_init_reply = true;
+  if (res == TWIok)
+    rda_capabilities |= TRXCAP_DUPLEX;
 }
 #endif
 
 
 void rda_reset(void) {
-  rda_init_reply = false;
-  rda_present    = false;		// no TWI answer - may be no init...
-  rda2_present   = false;
-  reg_write(RDA_TWI_ADR, RDAREG_CTRL, RDAREG_CTRL_RESET, 2, reset_rda_handler);
+  rda_init_reply   = false;
+  rda_capabilities = 0;
+  while (reg_write(RDA_TWI_ADR, RDAREG_CTRL, RDAREG_CTRL_RESET, 2, reset_rda_handler)==TWIbusy) {
+    SLEEP();
+  } // ehliw
 #ifdef SUPPORT_2ND_IC
   reg_write(RDA_TWI_2ndADR, RDAREG_CTRL, RDAREG_CTRL_RESET, 2, reset_rda2_handler);
 #endif
@@ -163,20 +166,15 @@ void rda_update_ctrl(void) {
 }
 
 
-#ifdef DEBUG
-#define WAIT_TIMER		10000
-#else
-#define WAIT_TIMER		10
-#endif
 
 unsigned int rda_init(void) {
-  U32 cnt;
   rda_reset();
   rda_rx_freq = 0;
   rda_tx_freq = 0;
-  for (cnt=0; (cnt<WAIT_TIMER)&&(!rda_init_reply); cnt++) SLEEP();	// wait reset-answer
-  // ~ 1046 w/o sleep
-  if (rda_init_reply && rda_present) {
+  while ((twi_busy()) && (!rda_init_reply)) {
+    SLEEP();	// wait reset-answer
+  }
+  if (rda_init_reply && (rda_capabilities&TRXCAP_AVAIL)) {
 #ifdef DEBUG
     LED_Set(LED_GREEN);
 #endif
@@ -184,7 +182,7 @@ unsigned int rda_init(void) {
     reg_write(RDA_TWI_ADR, 0x09, 0x03AC, 2, NULL);	// Set GPIO voltages from 2.7V to VCC
     reg_write(RDA_TWI_ADR, 0x0B, 0x1A10, 2, NULL);	// nix Ahnung
     rda_init_xtal();
-    SLEEP();
+//    while (twi_busy()) SLEEP();
     /*
     reg_write(RDA_TWI_ADR, 0x32, 0x627C, 2, NULL);	// no Ahnung, nicht relevant bei openDV
     reg_write(RDA_TWI_ADR, 0x33, 0x0AF2, 2, NULL);	// no Ahnung, nicht relevant bei openDV
@@ -198,13 +196,12 @@ unsigned int rda_init(void) {
     // disable DSP Filters and Pre/Deemphasis:
     reg_write(RDA_TWI_ADR, RDAREG_FILTER, RDAREG_FILTER_DIS, 2, NULL);
     rda_rfoutput(0x1F);
-    SLEEP();
+//    while (twi_busy()) SLEEP();
     rda_ctrlreg = RDAREG_CTRL_PWRON|RDAREG_CTRL_CAL;
     rda_update_ctrl();
-  }
-
-  return (rda_present?TRXCAP_AVAIL:0)|(rda2_present?TRXCAP_DUPLEX:0)|TRXCAP_VHF|TRXCAP_UHF;
-
+    rda_capabilities |= TRXCAP_VHF|TRXCAP_UHF;
+  } // fi
+  return rda_capabilities;
 }
 
 

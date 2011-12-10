@@ -319,6 +319,8 @@ bool config_setup(const char *config_data, int len) {
  */
 //! @{
 
+#define	SFC_TRX_CAPABILITIES	0xc1
+
 #define SFC_GET_CURR_RSSI	0x08
 
 #define SFC_CORRECT_TX_CLOCK	0x10
@@ -369,6 +371,14 @@ void handle_special_func_cmd(int len) {
   if (len < 2) {
     pc_send_byte(NAK);
   } else switch (rxdatapacket.data[PKT_PARAM_IDX]) {
+  case SFC_TRX_CAPABILITIES:
+    answer.head.len = 6;
+    answer.data[PKT_PARAM_IDX]   = SFC_TRX_CAPABILITIES;
+    answer.data[PKT_PARAM_IDX+1] = LSB0W(trx_capabilities);
+    answer.data[PKT_PARAM_IDX+2] = LSB1W(trx_capabilities);
+    answer.data[PKT_PARAM_IDX+3] = LSB2W(trx_capabilities);
+    answer.data[PKT_PARAM_IDX+4] = LSB3W(trx_capabilities);
+    break;
   case SFC_CORRECT_TX_CLOCK:
     parameter = (rxdatapacket.data[PKT_PARAM_IDX+1]) | (rxdatapacket.data[PKT_PARAM_IDX+2]<<8) |
       (rxdatapacket.data[PKT_PARAM_IDX+3]<<16) | (rxdatapacket.data[PKT_PARAM_IDX+4]<<24);
