@@ -145,7 +145,7 @@ void rptr_stopped(void) {
   gmsk_set_reloadfunc(NULL);
   disable_ptt();
   trx_receive();
-  RPTR_Flags &= ~RPTR_TRANSMITTING;
+  RPTR_clear(RPTR_TRANSMITTING);
   LED_Clear(LED_RED);
 #if (DVTX_TIMER_CH==IDLE_TIMER_CH)
   idle_timer_start();
