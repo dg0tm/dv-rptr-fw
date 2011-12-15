@@ -776,7 +776,7 @@ INTERRUPT_FUNC gmsk_runidle_int(void) {
     }
     gmsk_nextdataptr = NULL;			// Datenzeiger
     gmsk_nextbitlen  = 0;
-  }
+  } // esle (finish fading)
 }
 
 
@@ -784,45 +784,43 @@ INTERRUPT_FUNC gmsk_calcnextbit_int(void) {
   AVR32_SPI.idr = AVR32_SPI_IER_TXEMPTY_MASK;
   AVR32_SPI.sr;
   // Setting Timer-Period - modulate to a exact Baudrate
-//  if (++gmsk_overcnt >= GMSK_OVERSAMPLING) {
-    dsp16_t mod_new = dac_zero_val;
+  dsp16_t mod_new = dac_zero_val;
 
-    // Daten laden, Pointer, Counter:
-    if (gmsk_bitcnt < gmsk_bitlen) {		// Lade neue DAC-Daten
-      if ((gmsk_bitcnt&0x1F) == 0) {		// bei jeden 32igsten Bit laden
-        gmsk_tsr = swap32(*gmsk_dataptr++);
+  // Daten laden, Pointer, Counter:
+  if (gmsk_bitcnt < gmsk_bitlen) {		// Lade neue DAC-Daten
+    if ((gmsk_bitcnt&0x1F) == 0) {		// bei jeden 32igsten Bit laden
+      gmsk_tsr = swap32(*gmsk_dataptr++);
 //        gmsk_tsr = GMSK_SYNCPATTERN;	// <<<<< TEST
-      } // fi next word load
+    } // fi next word load
 //      if (gmsk_tsr&0x80000000)		// Daten bitweise auswerten MSB first
-      if (gmsk_tsr&0x00000001)			// Daten bitweise auswerten LSB first
-	mod_new = dac_one_val;
-      gmsk_tsr >>= 1;
-      gmsk_bitcnt++;
-    } // fi Bits zum aussenden
-    if (gmsk_bitcnt >= gmsk_bitlen) {		// Ende Gelände?
-      gmsk_bitcnt = 0;
-      if (gmsk_nextbitlen > 0) { //&& (gmsk_nextdataptr != NULL)) {
-	gmsk_dataptr = gmsk_nextdataptr;	// Lade nächstes Datapkt
-	gmsk_bitlen  = gmsk_nextbitlen;
-	gmsk_alertpos = gmsk_next_alertpos;
-      } else {
-	gmsk_bitlen = 0;
-	gmsk_bittimer = GMSK_POSTAMBLEBITS;
-	gmsk_alertpos = 0;
-	INTC_register_interrupt(gmsk_runidle_int, AVR32_SPI_IRQ, DV_MODWRK_INTPRIO);
-	mod_new = DAC_MIDDLE;
-      } // esle "doch kein nächstes Paket"
-      gmsk_nextdataptr = NULL;			// Datenzeiger
-      gmsk_nextbitlen  = 0;
-    } // fi alle Bits raus
-    gmsk_nextdacval(mod_new);	// Verschiebe Daten in modulator_in (Vektor für FIR).
-    // Gauss-Filter:
-    dsp16_filt_fir(modulator_out, modulator_in, MOD_IN_FSIZE, (dsp16_t *)GaussCoeffs, GaussCoeffsSize);
-    // Fast-Reload
-    if ((gmsk_reloadhandler != NULL) && (gmsk_bitcnt==gmsk_alertpos)) {
-      gmsk_reloadhandler();
-    } // fi fast reload handler
-//  } // fi oversampling
+    if (gmsk_tsr&0x00000001)			// Daten bitweise auswerten LSB first
+      mod_new = dac_one_val;
+    gmsk_tsr >>= 1;
+    gmsk_bitcnt++;
+  } // fi Bits zum aussenden
+  if (gmsk_bitcnt >= gmsk_bitlen) {		// Ende Gelände?
+    gmsk_bitcnt = 0;
+    if (gmsk_nextbitlen > 0) { //&& (gmsk_nextdataptr != NULL)) {
+      gmsk_dataptr = gmsk_nextdataptr;	// Lade nächstes Datapkt
+      gmsk_bitlen  = gmsk_nextbitlen;
+      gmsk_alertpos = gmsk_next_alertpos;
+    } else {
+      gmsk_bitlen = 0;
+      gmsk_bittimer = GMSK_POSTAMBLEBITS;
+      gmsk_alertpos = 0;
+      INTC_register_interrupt(gmsk_runidle_int, AVR32_SPI_IRQ, DV_MODWRK_INTPRIO);
+      mod_new = DAC_MIDDLE;
+    } // esle "doch kein nächstes Paket"
+    gmsk_nextdataptr = NULL;			// Datenzeiger
+    gmsk_nextbitlen  = 0;
+  } // fi alle Bits raus
+  gmsk_nextdacval(mod_new);	// Verschiebe Daten in modulator_in (Vektor für FIR).
+  // Gauss-Filter:
+  dsp16_filt_fir(modulator_out, modulator_in, MOD_IN_FSIZE, (dsp16_t *)GaussCoeffs, GaussCoeffsSize);
+  // Fast-Reload
+  if ((gmsk_reloadhandler != NULL) && (gmsk_bitcnt==gmsk_alertpos)) {
+    gmsk_reloadhandler();
+  } // fi fast reload handler
 }
 
 
