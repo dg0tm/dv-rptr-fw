@@ -27,6 +27,7 @@
  *
  * Report:
  * 2011-07-03  JA  BugFix: ee_write works now with "ack polling", no additional char written
+ * 2011-12-15  JA  BugFix: TXCOMP-INT-enabeling must be after transfer-start
  *
  * ToDo / Bugs:
  * Various bugs bring dvfw to hang (display / wait non-installed EEProm!!!
@@ -49,7 +50,7 @@
 #define TWICHDIV 	((TWI_DIV+1)/2-4)
 #define TWICLDIV 	((TWI_DIV+1)/2-4)
 
-#define TWIQueueMask	0x007F		// big, normally 1F
+#define TWIQueueMask	0x001F
 #define TWIQueueSize	(TWIQueueMask+1)
 
 #define TWI_EE_DEVICE	0x50
@@ -70,16 +71,18 @@ typedef struct {
 
 
 ttwijob	TWIjobs[TWIQueueSize];		// Queue für I²C I/O
-U32	TWIrjob, TWIwjob;
+U32	TWIrjob, TWIwjob, TWIcjob;
 Bool	twi_running;			// used to pause i/o
-
+Bool	twi_idle;			// true, if no job processed
+U8	twi_jobrecursion;
 
 void twi_startpdca(const ttwijob *job) {
   TWI_PDAC.mar = (U32)job->buffer;
   TWI_PDAC.tcr = job->len;
-  TWIIO.ier    = AVR32_TWI_IER_TXCOMP_MASK|AVR32_TWI_IER_NACK_MASK;
   TWIIO.cr     = AVR32_TWI_MSEN_MASK;
   TWI_PDAC.cr  = AVR32_PDCA_TEN_MASK;
+  // TXCOMP set to low with the beginning of the transfer...
+  TWIIO.ier    = AVR32_TWI_IER_TXCOMP_MASK|AVR32_TWI_IER_NACK_MASK;
 }
 
 
@@ -94,8 +97,10 @@ __inline void twi_startmultipleread(const ttwijob *job) {
 
 
 void twi_process_job(void) {
-  if (twi_running && (TWIrjob != TWIwjob)) {		// next job?
-    ttwijob *actjob = &TWIjobs[TWIrjob&TWIQueueMask];
+  if (twi_running && (TWIrjob != TWIcjob)) {		// next job?
+    ttwijob *actjob;
+    twi_idle   = false;
+    actjob     = &TWIjobs[TWIrjob&TWIQueueMask];
     TWIIO.mmr  = actjob->device << AVR32_TWI_MMR_DADR_OFFSET;
     TWIIO.iadr = actjob->addr;
     // MREAD=0, IADRZ=0 (no int. adr)
@@ -134,13 +139,14 @@ void twi_process_job(void) {
       // like startpdca, but with "embedded" data
       TWI_PDAC.mar = (U32)(&(actjob->buffer));
       TWI_PDAC.tcr = actjob->len;
-      TWIIO.ier    = AVR32_TWI_IER_TXCOMP_MASK|AVR32_TWI_IER_NACK_MASK;
       TWIIO.cr     = AVR32_TWI_MSEN_MASK;
       TWI_PDAC.cr  = AVR32_PDCA_TEN_MASK;
+      TWIIO.ier    = AVR32_TWI_IER_TXCOMP_MASK|AVR32_TWI_IER_NACK_MASK;
       return;
     } // hctiws cmd
   }  // fi next
   TWIIO.idr = AVR32_TWI_IDR_TXCOMP_MASK|AVR32_TWI_IDR_NACK_MASK;	// Disable
+  twi_idle  = true;
 }
 
 
@@ -158,8 +164,10 @@ INTERRUPT_FUNC twi_interrupt(void) {
   U32 leftb   = TWI_PDAC.tcr;			// Bytes transfered from PDCA
   TWIIO.cr    = AVR32_TWI_MSDIS_MASK;		// TWI stop
   TWI_PDAC.cr = AVR32_PDCA_ECLR_MASK|AVR32_PDCA_TDIS_MASK;	// TWI-PDCA stop
+  twi_idle    = false;				// ever false while handling CallBack!
   // handle callback of curr job
   currjob = &TWIjobs[TWIrjob&TWIQueueMask];	// pointer to current job
+  TWIrjob++;					// next job / this one is done
   if (currjob->func != NULL) {
     if (twisr&AVR32_TWI_SR_NACK_MASK) {
       /*U32 txed_data = currjob->len - leftb - 1;
@@ -173,10 +181,7 @@ INTERRUPT_FUNC twi_interrupt(void) {
       currjob->func((leftb==0)?TWIok:TWIerror, currjob->len - leftb);
     }
   } // fi function definded
-
-  TWIrjob++;					// next job / this one is done
   twi_process_job();
-
 } // end int
 
 
@@ -186,7 +191,8 @@ INTERRUPT_FUNC twi_interrupt(void) {
 //! @{
 
 void twi_exit(void) {
-  twi_running = FALSE;
+  twi_running= false;
+  twi_idle   = false;
   TWIIO.idr  = 0xFFFF;
   TWIIO.cr   = AVR32_TWI_SWRST_MASK|AVR32_TWI_SVDIS_MASK|AVR32_TWI_MSDIS_MASK;
   TWIIO.cwgr = 0;	// To detect a disabled TWI
@@ -209,111 +215,113 @@ void twi_init(void) {
 
   TWIrjob = 0;
   TWIwjob = 0;
+  TWIcjob = 0;
+  twi_jobrecursion = 0;
   INTC_register_interrupt(twi_interrupt, TWIIRQ, TWI_INTPRIO);
   INTC_register_interrupt(twi_stoprd_int, AVR32_PDCA_IRQ_0+TWI_CHANNEL, TWI_INTPRIO);
-  twi_running = TRUE;
+  twi_running = true;
+  twi_idle    = true;
 }
 
 
-tTWIresult twi_write(unsigned char adr, const char *data, unsigned int len, twi_handler RetFunc) {
-  if ( (TWIwjob-TWIrjob) >= TWIQueueSize ) {
-    return TWIbusy;
-  } else {
-    ttwijob *newjob = &TWIjobs[TWIwjob&TWIQueueMask];
-    newjob->cmd  = TWIwrite;
-    newjob->device = adr;
-    newjob->buffer = data;
-    newjob->len  = len;
-    newjob->func = RetFunc;
+ttwijob *twi_getnewjob(void) {
+  ttwijob *newjob = NULL;
+  if ( (TWIwjob-TWIrjob) < TWIQueueSize ) {
+    Disable_global_interrupt();		// The following code must be atomar
+    newjob = &TWIjobs[TWIwjob&TWIQueueMask];
     TWIwjob++;
-    if ((TWIIO.imr & AVR32_TWI_IMR_TXCOMP_MASK)==0) {
-      twi_process_job();
-    } // fi idle
-  } // esle
+    twi_jobrecursion++;
+    Enable_global_interrupt();
+  }
+  return newjob;
+}
+
+
+void twi_acknewjob(void) {
+  bool is_idle;
+  Disable_global_interrupt();		// The following code must be atomar
+  if ((--twi_jobrecursion)==0) {	// decrement recursion counter
+    TWIcjob = TWIwjob;			// Complete job, if non-recursion call
+  }
+  is_idle  = twi_idle;
+  twi_idle = !twi_running;
+  Enable_global_interrupt();
+  if (twi_running && is_idle) {
+//  if ((TWIIO.imr & AVR32_TWI_IMR_TXCOMP_MASK)==0) {
+    twi_process_job();
+  }
+} // fi idle
+
+
+tTWIresult twi_write(unsigned char adr, const char *data, unsigned int len, twi_handler RetFunc) {
+  ttwijob *newjob = twi_getnewjob();
+  if ( newjob == NULL ) return TWIbusy;
+  newjob->cmd  = TWIwrite;
+  newjob->device = adr;
+  newjob->buffer = data;
+  newjob->len  = len;
+  newjob->func = RetFunc;
+  twi_acknewjob();	// Acknowledge job
   return TWIok;
 }
 
 
 tTWIresult twi_read(unsigned char adr, char *dest, unsigned int len, twi_handler RetFunc) {
-  if ( (TWIwjob-TWIrjob) >= TWIQueueSize ) {
-    return TWIbusy;
-  } else {
-    ttwijob *newjob = &TWIjobs[TWIwjob&TWIQueueMask];
-    newjob->cmd  = TWIread;
-    newjob->device = adr;
-    newjob->buffer = dest;
-    newjob->len  = len;
-    newjob->func = RetFunc;
-    TWIwjob++;
-    if ((TWIIO.imr & AVR32_TWI_IMR_TXCOMP_MASK)==0) {
-      twi_process_job();
-    } // fi idle
-  }
+  ttwijob *newjob = twi_getnewjob();
+  if ( newjob == NULL ) return TWIbusy;
+  newjob->cmd  = TWIread;
+  newjob->device = adr;
+  newjob->buffer = dest;
+  newjob->len  = len;
+  newjob->func = RetFunc;
+  twi_acknewjob();	// Acknowledge job
   return TWIok;
 }
 
 
 tTWIresult ee_write(unsigned int adr, const char *data, unsigned int len, twi_handler RetFunc) {
-  if ( (TWIwjob-TWIrjob) >= TWIQueueSize ) {
-    return TWIbusy;
-  } else {
-    ttwijob *newjob = &TWIjobs[TWIwjob&TWIQueueMask];
-    newjob->cmd  = EEwrite;
-    newjob->device = TWI_EE_DEVICE | ((adr >> 16)&0x7);
-    newjob->addr = adr&0xFFFF;
-    newjob->buffer = data;
-    newjob->len  = len;
-    newjob->func = RetFunc;
-    TWIwjob++;
-    if ((TWIIO.imr & AVR32_TWI_IMR_TXCOMP_MASK)==0) {
-      twi_process_job();
-    } // fi idle
-  } // esle
+  ttwijob *newjob = twi_getnewjob();
+  if ( newjob == NULL ) return TWIbusy;
+  newjob->cmd  = EEwrite;
+  newjob->device = TWI_EE_DEVICE | ((adr >> 16)&0x7);
+  newjob->addr = adr&0xFFFF;
+  newjob->buffer = data;
+  newjob->len  = len;
+  newjob->func = RetFunc;
+  twi_acknewjob();	// Acknowledge job
   return TWIok;
 }
 
 
 tTWIresult ee_read(unsigned int adr, char *dest, unsigned int len, twi_handler RetFunc) {
-  if ( (TWIwjob-TWIrjob) >= TWIQueueSize ) {
-    return TWIbusy;
-  } else {
-    ttwijob *newjob = &TWIjobs[TWIwjob&TWIQueueMask];
-    newjob->cmd  = EEread;
-    newjob->device = TWI_EE_DEVICE | ((adr >> 16)&0x7);
-    newjob->addr = adr&0xFFFF;
-    newjob->buffer = dest;
-    newjob->len  = len;
-    newjob->func = RetFunc;
-    TWIwjob++;
-    if ((TWIIO.imr & AVR32_TWI_IMR_TXCOMP_MASK)==0) {
-      twi_process_job();
-    } // fi idle
-  }
+  ttwijob *newjob = twi_getnewjob();
+  if ( newjob == NULL ) return TWIbusy;
+  newjob->cmd  = EEread;
+  newjob->device = TWI_EE_DEVICE | ((adr >> 16)&0x7);
+  newjob->addr = adr&0xFFFF;
+  newjob->buffer = dest;
+  newjob->len  = len;
+  newjob->func = RetFunc;
+  twi_acknewjob();	// Acknowledge job
   return TWIok;
 }
 
 
 tTWIresult reg_write(unsigned char adr, unsigned char reg, unsigned int value, char reg_size, twi_handler RetFunc) {
-  if ( (TWIwjob-TWIrjob) >= TWIQueueSize ) {
-    return TWIbusy;
-  } else if ((reg_size==0)||(reg_size>4)){
-    return TWIerror;
-  } else {
-    value <<= (4-reg_size)*8;		// shift bytes to high (big endian)
-    ttwijob *newjob = &TWIjobs[TWIwjob&TWIQueueMask];
-    newjob->cmd    = REGwrite;
-    newjob->device = adr;
-    newjob->addr   = reg;
-    newjob->buffer = (char *)value;
-    newjob->len    = reg_size;
-    newjob->func   = RetFunc;
-    TWIwjob++;
-    if ((TWIIO.imr & AVR32_TWI_IMR_TXCOMP_MASK)==0) {
-      twi_process_job();
-    } // fi idle
-  } // esle
+  ttwijob *newjob = twi_getnewjob();
+  if ( newjob == NULL ) return TWIbusy;
+  if ((reg_size==0)||(reg_size>4)) return TWIerror;
+  value <<= (4-reg_size)*8;		// shift bytes to high (big endian)
+  newjob->cmd    = REGwrite;
+  newjob->device = adr;
+  newjob->addr   = reg;
+  newjob->buffer = (char *)value;
+  newjob->len    = reg_size;
+  newjob->func   = RetFunc;
+  twi_acknewjob();	// Acknowledge job
   return TWIok;
 }
+
 
 
 tTWIresult reg_read(unsigned char adr, unsigned char reg, char *dest, char reg_size, twi_handler RetFunc) {
