@@ -67,6 +67,8 @@
  * 2011-11-06 V1.00  same as RC1, changed standard config values (0.75Vss TXmod / 120ms TX-Delay
  * 2011-11-13 V1.10  first version with a simple TRX control
  * 2011-11-17 V1.10a a few changes allows Cfg-Applying with transmitting
+ * 2011-12-28 V1.10b long-roger-beep bug fixed
+ *
  *
  * ToDo:
  * - USB not working after reset cmd, maybe a USB-unplug msg is needed

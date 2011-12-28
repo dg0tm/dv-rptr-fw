@@ -38,6 +38,7 @@
  * 2011-04-05  JA  add receive-unlock function -> this terminate receiving, if RX-PLL unlock
  *		   moved one-counter part of rptr_is_syncpacket() as a separate function to "crc.c"
  *		   add a "lossy" START-detection: tolerate up to 2 bit-errors, if a 17bit SYNC was before
+ * 2011-12-28  JA  long-roger-beep bug fixed
  *
  * Attention:
  * Prevent sending 1-voice-frame like HEADER - VOICE - EOT. Minimum 2 frames!
@@ -188,7 +189,6 @@ void rptr_transmit_voicedata(void) {
 void rptr_transmit_header(void) {
   gmsk_transmit((U32 *)&DStar_HeaderBS, DSTAR_HEADEROUTBITSIZE, DSTAR_HEADEROUTBITSIZE-DSTAR_BEFOREFRAMEENDS);
   RPTR_TxFrameCount = 0;
-  TxVoice_StopPos   = 0;
   TxVoice_RdPos     = 0;
   gmsk_set_reloadfunc(rptr_transmit_voicedata);
   rptr_tx_state = RPTRTX_header;
