@@ -29,9 +29,15 @@
 
 #include "dv_dstar.h"
 
+#ifdef SIMPLIFIED_FIFO
+  // simplified Fifo buffer behavior, as requested by DG1HT
+#define	VoiceTxBufSize	DSTAR_SYNCINTERVAL		// Size of VoiceBuf
+#else
 #define	VoiceTxBufSize	(12*DSTAR_SYNCINTERVAL)		// Size of VoiceBuf
+#endif
 
 #define VoiceRxBufSize	DSTAR_SYNCINTERVAL		// Fixed to one sync
+
 
 typedef enum {
   RPTRTX_disabled, RPTRTX_idle, RPTRTX_txdelay, RPTRTX_preamble,

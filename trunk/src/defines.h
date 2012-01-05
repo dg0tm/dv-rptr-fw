@@ -27,7 +27,7 @@
 #ifndef DEFINES_H_
 #define DEFINES_H_
 
-#define FIRMWAREVERSION		0x1102
+#define FIRMWAREVERSION		0x1103
 
 // Version Vxx.yy (last digit is char ' ', a, b...)
 
@@ -39,10 +39,14 @@
  * Bugfixlevel   c - Increased with one or more bugfixes (at the same time)
  */
 
-#define RELEASE_STRING		"2011-12-28"	// Release Date
+#define RELEASE_STRING		"2012-01-05"	// Release Date
 
 
 #define VERSION_IDENT		"DV-RPTR R." RELEASE_STRING
+
+#if (FIRMWAREVERSION>=0x2000)
+#define	SIMPLIFIED_FIFO
+#endif
 
 
 #define PROGRAM_START_OFFSET	0x00004000

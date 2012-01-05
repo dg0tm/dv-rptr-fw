@@ -621,27 +621,23 @@ void rptr_endtransmit(unsigned char pkt_nr_stop) {
  * keep an eye of buffer overflow's and write to the buffer, who was in tx
  */
 void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
+#ifdef SIMPLIFIED_FIFO
+  // simplified Fifo buffer behavior, as requested by DG1HT
+  if (pkt_nr & 0x40) {
+    rptr_endtransmit(TxVoice_WrPos);
+  } else {
+    memcpy(&DStar_TxVoice[TxVoice_WrPos], buf, sizeof(tds_voicedata));	// copy new data
+    TxVoice_WrPos = (TxVoice_WrPos+1) % VoiceTxBufSize;	// inc write-position
+  }
+#else
   tds_voicedata *new_data;
-
-  // Test: un-commend next line to disable buffer-sorting (ignore pkt_nr)
-  // pkt_nr = TxVoice_WrPos;	// *** TEST
-
-#if VoiceTxBufSize != DSTAR_SYNCINTERVAL
-  int cycle = pkt_nr%DSTAR_SYNCINTERVAL;	// set frame #0, #21, #42 ...
-#else						// a sync frame!
-#define cycle	pkt_nr
-#endif
   if ((pkt_nr >= VoiceTxBufSize) || (pkt_nr == (TxVoice_RdPos+(VoiceTxBufSize-1)) % VoiceTxBufSize))
     return;		// prevent buffer overflow OR writing on current TXed buffer.
   new_data = &DStar_TxVoice[pkt_nr];
   memcpy(new_data, buf, sizeof(tds_voicedata));	// copy new data
-  if (cycle==0) {				// Sync-Frame needed?
-    dstar_insert_sync(new_data);
-#ifdef PLAIN_SLOWDATA
-//  } else {
-//    dstar_scramble_data(new_data);		// scramble data (was plain)
-#endif
-  } // esle
+  /* no manipulation on data anymore
+  if (cycle==0) dstar_insert_sync(new_data);	// Sync-Frame needed?
+  */
   if (pkt_nr == TxVoice_WrPos) {		// expected packet from PC...
     TxVoice_WrPos = (TxVoice_WrPos+1) % VoiceTxBufSize;
   } else {		// unsorted packet - expand transmit window to pkt_nr
@@ -654,9 +650,11 @@ void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
       TxVoice_WrPos = (pkt_nr+1) % VoiceTxBufSize;
     }
   } // esle with gaps
+#endif
   TxVoice_StopPos = TxVoice_RdPos;	// update stop-position, long-gap silence
   RPTR_clear(RPTR_TX_EMPTY);
 }
+
 
 
 __inline unsigned char rptr_get_unsend(void) {
