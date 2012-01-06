@@ -39,6 +39,8 @@
  *		   moved one-counter part of rptr_is_syncpacket() as a separate function to "crc.c"
  *		   add a "lossy" START-detection: tolerate up to 2 bit-errors, if a 17bit SYNC was before
  * 2011-12-28  JA  long-roger-beep bug fixed
+ * 2012-01-06  JA  keep BufferWritePos to actual position (simplified fifo)
+ *
  *
  * Attention:
  * Prevent sending 1-voice-frame like HEADER - VOICE - EOT. Minimum 2 frames!
@@ -167,6 +169,10 @@ void rptr_transmit_voicedata(void) {
   tds_voicedata *voicedat = &DStar_TxVoice[TxVoice_RdPos];
   // replace voice data, currently transmitting with Silence
   tds_voicedata *voicejusttxed = &DStar_TxVoice[(TxVoice_RdPos+VoiceTxBufSize-1) % VoiceTxBufSize];
+  if (TxVoice_RdPos == TxVoice_WrPos) {	// Buffer is STILL empty
+    RPTR_set(RPTR_TX_EMPTY);			// set flag to signalling
+    TxVoice_WrPos = (TxVoice_WrPos+1) % VoiceTxBufSize;	// increment WritePos
+  } // fi empty
   TxVoice_RdPos = (TxVoice_RdPos+1) % VoiceTxBufSize;
   if (TxVoice_RdPos == TxVoice_StopPos) {	// EOT-position reached? -> last voice frame
     gmsk_transmit(voicedat->packet, DSTAR_VOICEFRAMEBITSIZE, 1);
@@ -176,8 +182,9 @@ void rptr_transmit_voicedata(void) {
   } else { // fi stop with this pkt
     gmsk_transmit(voicedat->packet, DSTAR_FRAMEBITSIZE, DSTAR_FRAMEBITSIZE-DSTAR_BEFOREFRAMEENDS);
     rptr_tx_state = RPTRTX_voicedata;
-    if (TxVoice_RdPos == TxVoice_WrPos)
-      RPTR_set(RPTR_TX_EMPTY);
+    if (TxVoice_RdPos == TxVoice_WrPos) {	// Buffer get empty NOW!
+      RPTR_set(RPTR_TX_EMPTY);			// signalling it
+    } // fi empty
   } // esle norm
   // replace voice data, currently transmitting with Silence
   // DSTAR_BEFOREFRAMEENDS < 32: All bits we need for the current tx are in gmsk-buffer
