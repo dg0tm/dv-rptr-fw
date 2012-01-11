@@ -40,6 +40,7 @@
  *		   add a "lossy" START-detection: tolerate up to 2 bit-errors, if a 17bit SYNC was before
  * 2011-12-28  JA  long-roger-beep bug fixed
  * 2012-01-06  JA  keep BufferWritePos to actual position (simplified fifo)
+ * 2012-01-11  JA  BugFix Pattern-Handling if PLL not correct an a to early match appears.
  *
  *
  * Attention:
@@ -67,6 +68,8 @@
 
 
 #define RPTR_PREAMBLE_TO	DSTAR_SYNCINTERVAL	// value in 20ms
+
+#define VOICE_TX_ALLOWED_GAP	(VoiceTxBufSize/3)
 
 
 ALIGNED_DATA static const unsigned long preamble_dstar[5] = {
@@ -169,7 +172,7 @@ void rptr_transmit_voicedata(void) {
   tds_voicedata *voicedat = &DStar_TxVoice[TxVoice_RdPos];
   // replace voice data, currently transmitting with Silence
   tds_voicedata *voicejusttxed = &DStar_TxVoice[(TxVoice_RdPos+VoiceTxBufSize-1) % VoiceTxBufSize];
-  if (TxVoice_RdPos == TxVoice_WrPos) {	// Buffer is STILL empty
+  if (TxVoice_RdPos == TxVoice_WrPos) {		// Buffer is STILL empty
     RPTR_set(RPTR_TX_EMPTY);			// set flag to signalling
     TxVoice_WrPos = (TxVoice_WrPos+1) % VoiceTxBufSize;	// increment WritePos
   } // fi empty
@@ -402,7 +405,7 @@ int rptr_whilereceivepattern(unsigned int pattern, unsigned int bitcounter) {
         return 2;
       } else if (bitcounter > (DSTAR_FRAMEBITSIZE-5)) {	// PLL to fast, early FRAME-SYNC
         RPTR_RxLastSync = RPTR_RxFrameCount;	// update sync pos cnt
-        DStar_RxVoice[RPTR_RxFrameCount].packet[2] = swap32(pattern);
+        DStar_RxVoice[RPTR_RxFrameCount%VoiceRxBufSize].packet[2] = swap32(pattern);
         rptr_receivedframe();	// call receive function to handle (incorrect) unfinished data
         return 2;		// force a re-sync
       }
@@ -649,6 +652,12 @@ void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
     TxVoice_WrPos = (TxVoice_WrPos+1) % VoiceTxBufSize;
   } else {		// unsorted packet - expand transmit window to pkt_nr
     // a numbered packet in the empty buffer area results in an update of WrPos
+    // (last packet), IF(!) the gap is lower as a threshold
+    unsigned int nr_difference = (pkt_nr+VoiceTxBufSize-TxVoice_WrPos) % VoiceTxBufSize;
+    if (nr_difference < VOICE_TX_ALLOWED_GAP)
+      TxVoice_WrPos = (pkt_nr+1) % VoiceTxBufSize;
+/*
+    // a numbered packet in the empty buffer area results in an update of WrPos
     // (last packet). Gaps are initialized with Silence.
     if ( ((TxVoice_WrPos > TxVoice_RdPos) &&
 	 ((pkt_nr >= TxVoice_WrPos)||(pkt_nr < TxVoice_RdPos))) ||
@@ -656,6 +665,7 @@ void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
  	 ((pkt_nr >= TxVoice_WrPos)&&(pkt_nr < TxVoice_RdPos))) ) {
       TxVoice_WrPos = (pkt_nr+1) % VoiceTxBufSize;
     }
+*/
   } // esle with gaps
 #endif
   TxVoice_StopPos = TxVoice_RdPos;	// update stop-position, long-gap silence

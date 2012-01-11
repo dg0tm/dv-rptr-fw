@@ -69,6 +69,7 @@
  * 2011-11-17 V1.10a a few changes allows Cfg-Applying with transmitting
  * 2011-12-28 V1.10b long-roger-beep bug fixed
  * 2012-01-05 V1.10c alternative #define SIMPLIFIED_FIFO to use a non-sorting Fifo of 420ms
+ * 2012-01-11 V1.10d BugFix Pattern-Handling if PLL not correct an a to early match appears
  *
  *
  * ToDo:
