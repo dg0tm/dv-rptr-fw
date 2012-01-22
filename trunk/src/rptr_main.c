@@ -70,6 +70,7 @@
  * 2011-12-28 V1.10b long-roger-beep bug fixed
  * 2012-01-05 V1.10c alternative #define SIMPLIFIED_FIFO to use a non-sorting Fifo of 420ms
  * 2012-01-11 V1.10d BugFix Pattern-Handling if PLL not correct an a to early match appears
+ * 2012-01-22 V1.10e BugFix in controls.c module (dead carrier tx)
  *
  *
  * ToDo:
@@ -777,7 +778,7 @@ void init_pcdata(void) {
 
 
 void rptr_standby(void) {
-  status_control &= 0xF0;
+  status_control &= 0xF0;		// Watchdog/TX and RX disabled
   trx_standby();
   idle_timer_start();			// disable receiving
   // Disable Reference-DAC MAX5820
