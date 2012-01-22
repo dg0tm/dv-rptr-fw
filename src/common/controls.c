@@ -19,6 +19,10 @@
 
  * You should have received a copy of the GNU General Public License
  * along with this package. If not, see <http://www.gnu.org/licenses/>.
+ *
+ * Report:
+ * 2012-01-22 JA Bugfix: chA_level() vs. dac_power_mode() using same memory don't work in some cases
+ *            -> using new reg_write() operation of twi_func module
  */
 
 #include "controls.h"
@@ -34,21 +38,17 @@ typedef struct PACKED_DATA {
 
 ttwi_control chA_lvl;
 ttwi_control chB_lvl;
-ttwi_control dac_sfreg;
 
 
 void dac_twidone(tTWIresult TWIres, unsigned int transfered_bytes) {
   if ((TWIres == TWIok)&&(transfered_bytes)) {
-    dac_sfreg.reg = 0xE0;
-    twi_write(TWI_DAC_ADR, (const char *)&dac_sfreg, 2, NULL);
+    reg_write(TWI_DAC_ADR, 0xE0, 0x00, 1, NULL);
   }
 }
 
 
 void set_dac_power_mode(unsigned char mde) {
-  dac_sfreg.reg = 0xF0;
-  dac_sfreg.value = mde;
-  twi_write(TWI_DAC_ADR, (const char *)&dac_sfreg.reg, 2, NULL);
+  reg_write(TWI_DAC_ADR, 0xF0, mde, 1, NULL);
 }
 
 
