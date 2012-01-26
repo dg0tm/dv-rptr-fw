@@ -501,40 +501,11 @@ void rptr_routeflags(void) {
 }
 
 
-void rptr_update_mycall(const char *MyCallSign) {
-  memcpy(DSTAR_HEADER.MyCall, MyCallSign, 12);
-  rptr_update_header();
-}
-
-void rptr_update_route(const char *NewRoute) {
-  memcpy(DSTAR_HEADER.RPT2Call, NewRoute, 24);
-  rptr_routeflags();
-  rptr_update_header();
-}
-
-void rptr_update_dest(const char *NewDest) {
-  memcpy(DSTAR_HEADER.RPT2Call, NewDest, 8);
-  rptr_update_header();
-}
-
-void rptr_update_depart(const char *NewDepart) {
-  memcpy(DSTAR_HEADER.RPT1Call, NewDepart, 8);
-  rptr_routeflags();
-  rptr_update_header();
-}
-
-void rptr_update_yourcall(const char *NewYourCall) {
-  memcpy(DSTAR_HEADER.YourCall, NewYourCall, 8);
-  rptr_update_header();
-}
-
-void rptr_set_emergency(void) {
-  DSTAR_HEADER.flags[0] |= FLAG0_EMERG_MASK;
-  rptr_update_header();
-}
-
-void rptr_clr_emergency(void) {
-  DSTAR_HEADER.flags[0] &= ~FLAG0_EMERG_MASK;
+void rptr_replacement_header(void) {
+  memcpy(DSTAR_HEADER.YourCall, "CQCQCQ  ", 8);
+  memcpy(DSTAR_HEADER.MyCall, DSTAR_HEADER.RPT1Call, 8);
+  memcpy(&DSTAR_HEADER.MyCall[7], " RPTR", 5);
+  DSTAR_HEADER.flags[0] = FLAG0_RPT_MASK;
   rptr_update_header();
 }
 
@@ -673,11 +644,14 @@ void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
 }
 
 
-
 __inline unsigned char rptr_get_unsend(void) {
   return (TxVoice_WrPos+VoiceTxBufSize-TxVoice_RdPos) % VoiceTxBufSize;
 }
 
+
+__inline unsigned char rptr_get_txpos(void) {
+  return TxVoice_RdPos;
+}
 
 
 //! @}
