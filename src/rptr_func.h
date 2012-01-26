@@ -66,7 +66,7 @@ extern unsigned int RPTR_Flags;
 #define RPTR_INDICATOR_MASK	0x033F	// all w/o permanents
 
 
-#define RPTR_is_set(f)		(RPTR_Flags&f)
+#define RPTR_is_set(f)		(RPTR_Flags&(f))
 #define RPTR_set(f)		(RPTR_Flags |= f)
 #define RPTR_clear(f)		(RPTR_Flags &= ~(f))
 
@@ -96,15 +96,8 @@ void	rptr_init_hardware(void);	// Init des DStar-Modus
 void	rptr_exit_hardware(void);	// Verlassen des DSTar-Modus
 
 void	rptr_init_header(const tds_header *header);
-void	rptr_update_mycall(const char *MyCallSign);
-void	rptr_update_route(const char *NewRoute);
 
-void	rptr_update_dest(const char *NewDest);
-void	rptr_update_depart(const char *NewDepart);
-void	rptr_update_yourcall(const char *NewYourCall);
-
-void	rptr_set_emergency(void);
-void	rptr_clr_emergency(void);
+void	rptr_replacement_header(void);
 
 
 void	rptr_receive(void);
@@ -135,6 +128,9 @@ void	rptr_endtransmit(unsigned char pkt_nr_stop);
 void	rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr);
 
 unsigned char rptr_get_unsend(void);
+
+unsigned char rptr_get_txpos(void);
+
 
 char	*rptr_getheader(void);
 

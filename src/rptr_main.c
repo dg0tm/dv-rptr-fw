@@ -71,6 +71,8 @@
  * 2012-01-05 V1.10c alternative #define SIMPLIFIED_FIFO to use a non-sorting Fifo of 420ms
  * 2012-01-11 V1.10d BugFix Pattern-Handling if PLL not correct an a to early match appears
  * 2012-01-22 V1.10e BugFix in controls.c module (dead carrier tx)
+ * 2012-01-26 V1.20  THE LAST TRY: pic21mode.h, new reduced incompatible!!! interface
+ *
  *
  *
  * ToDo:
@@ -92,6 +94,7 @@
 #include "hw_defs.h"		// PTT-Macro
 #include "dac_func.h"
 #include "crc.h"
+#include "pick21mode.h"		// handles incoming DATA packets with IcomUDP-like numbers
 #include "rptr_func.h"		// realtime-handler part of HF I/O
 #include "gmsk_func.h"		// configuration
 #include "controls.h"
@@ -175,7 +178,7 @@ typedef enum {
 
 U8		status_control  = STA_NOCONFIG_MASK|STA_CANDUPLEX_MASK;	// Holds persitent control-flags
 U8		status_state;	// Holds state of RX/TX
-U8		current_txid;
+//U8		current_txid;
 
 U32		trx_capabilities;
 
@@ -284,7 +287,7 @@ void cfg_write_c0(const char *config_data) {
   memcpy(&CONFIG_C0, config_data, sizeof(CONFIG_C0));
   cfg_apply();
   if ((status_control & STA_NOCONFIG_MASK)||(!RPTR_is_set(RPTR_TRANSMITTING))) {
-    if (current_txid!=0xFE) current_txid = 0xFF;
+    //if (current_txid!=0xFE) current_txid = 0xFF;
   }
   status_control &= ~STA_NOCONFIG_MASK;		// clear no-config bit
 }
@@ -429,33 +432,11 @@ void handle_special_func_cmd(int len) {
 //! @}
 
 
+
 // *** handle PC (PCP2) packets ***
 /*! \name MAIN PCP2 packet handling
  */
 //! @{
-
-__inline void add_multi_voice_2_rptr(int len) {
-  unsigned int pkt_cnt = (len-7) / sizeof(tds_voicedata);
-  if (pkt_cnt == 1) {		// normal case - handle separated / optimized
-#ifdef PLAIN_SLOWDATA		// scramble data (if was plain)
-    dstar_scramble_data((tds_voicedata *)&rxdatapacket.data[PKT_PARAM_IDX+4]);
-#endif
-    // keep 2 bytes for future use, keep layout identical to RX
-    rptr_addtxvoice((tds_voicedata *)&rxdatapacket.data[PKT_PARAM_IDX+4],
-      rxdatapacket.data[PKT_PARAM_IDX+1]);
-  } else if ((pkt_cnt > 1) && (pkt_cnt <= DSTAR_SYNCINTERVAL)) {
-    unsigned char pktnr = rxdatapacket.data[PKT_PARAM_IDX+1];
-    tds_voicedata *voicedata = (tds_voicedata *)&rxdatapacket.data[PKT_PARAM_IDX+4];
-    for ( ; pkt_cnt > 0; pkt_cnt--) {
-  #ifdef PLAIN_SLOWDATA		// scramble data (if was plain)
-      dstar_scramble_data(voicedata);
-  #endif
-      rptr_addtxvoice(voicedata, pktnr);
-      voicedata++;
-      pktnr = (pktnr+1) % VoiceTxBufSize;
-    } // rof
-  } else pc_send_byte(NAK);
-}
 
 
 // handle_serial_paket()
@@ -538,48 +519,35 @@ __inline void handle_pc_paket(int len) {
     }
     break;
   case RPTR_START:		// early Turn-On xmitter, if configured a long TXD
-    if ((status_control & STA_TXENABLE_MASK) && (len==3)) {
-      if (rxdatapacket.data[PKT_PARAM_IDX] != current_txid) {
-	rptr_transmit_preamble(); // PTTon, wait for a header to start TX
-	if (rptr_tx_state <= RPTRTX_preamble)	// starts w/o interrupting a running transmission
-	  current_txid = rxdatapacket.data[PKT_PARAM_IDX];
-      }
-    } else
-      pc_send_byte(NAK);
+    // Ignore
     break;
   case RPTR_HEADER:		// start transmitting TXDelay-Preamble-Start-Header
     if (rptr_tx_state != RPTRTX_header)	// update only, if not transmitting just this moment
       rptr_init_header((tds_header *)&rxdatapacket.data[PKT_PARAM_IDX+4]);
     if (status_control & STA_TXENABLE_MASK) {
-      if ((rptr_tx_state <= RPTRTX_preamble) || (rxdatapacket.data[PKT_PARAM_IDX] != current_txid)) {
+      if (rptr_tx_state <= RPTRTX_preamble) {
         rptr_transmit();		// Turn on Xmitter
-        current_txid = rxdatapacket.data[PKT_PARAM_IDX];
       } // fi
       // -> ignore a HEADER msg with same TXID while sending
+      add_icom_voice_reset();
     } else
       pc_send_byte(NAK);
     // keep 2 bytes for future use, keep layout identical to RX
     break;
   case RPTR_RXSYNC:		// start transmitting TXDelay-Preamble-Start-Header
-    if (status_control & STA_TXENABLE_MASK) {
-      if ((rptr_tx_state <= RPTRTX_preamble) || (rxdatapacket.data[PKT_PARAM_IDX] != current_txid)) {
-	rptr_transmit();	// Turn on Xmitter only if PTT off
-	current_txid = rxdatapacket.data[PKT_PARAM_IDX];
-      } // if idle
-      // (transmission use last header)
-    } else
-      pc_send_byte(NAK);
+    // Ignore
     break;
   case RPTR_DATA:		// transmit data (voice and slowdata or sync)
-    if (rxdatapacket.data[PKT_PARAM_IDX] == current_txid)
-      add_multi_voice_2_rptr(len);
+    if (status_control & STA_TXENABLE_MASK) {
+      if (rptr_tx_state <= RPTRTX_preamble) {
+         rptr_transmit();		// Turn on Xmitter
+         add_icom_voice_reset();
+      } // fi
+    }
+    add_icom_voice_2_rptr(rxdatapacket.data[PKT_PARAM_IDX+1], &rxdatapacket.data[PKT_PARAM_IDX+4]);
     break;
   case RPTR_EOT:		// end transmission with EOT tail
-    if (len == 3) {
-      if (rxdatapacket.data[PKT_PARAM_IDX] == current_txid)
-        rptr_endtransmit(rxdatapacket.data[PKT_PARAM_IDX+1]);
-    } else
-      rptr_endtransmit(0xFF);	// stop after buffer is empty
+    // ignore
     break;
   case RPTR_SET_SPECIALFUNCT:
     handle_special_func_cmd(len);
@@ -668,9 +636,7 @@ void handle_hfdata(void) {
   if (RPTR_is_set(RPTR_INDICATOR_MASK)) {
     if (RPTR_is_set(RPTR_RX_1STPREAMBLE)) {
       RPTR_clear(RPTR_RX_1STPREAMBLE);
-      ctrldata.head.cmd = RPTR_RXPREAMBLE;
-      append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
-      data_transmit((char *)&ctrldata, sizeof(ctrldata));
+      // no sending to PC
     }
     if (RPTR_is_set(RPTR_RX_FRAMESYNC)) {
       RPTR_clear(RPTR_RX_FRAMESYNC);
@@ -679,8 +645,7 @@ void handle_hfdata(void) {
         ctrldata.rxid++;
         headerdata.rxid = ctrldata.rxid;
         voicedata.rxid  = ctrldata.rxid;
-        append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
-        data_transmit((char *)&ctrldata, sizeof(ctrldata));
+        // no sending to PC
         transmission = true;
       }
     }
@@ -697,42 +662,17 @@ void handle_hfdata(void) {
       ctrldata.rxid++;
       headerdata.rxid = ctrldata.rxid;
       voicedata.rxid =  ctrldata.rxid;
-      append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
-      data_transmit((char *)&ctrldata, sizeof(ctrldata));
+      // no sending to PC
       transmission = true;
     } // fi start detected
-    if (RPTR_is_set(RPTR_RX_STOP)) {
-      RPTR_clear(RPTR_RX_STOP);
-#ifdef SIMPLIFIED_FIFO
-  // simplified Fifo buffer behavior, as requested by DG1HT
+    if ( RPTR_is_set(RPTR_RX_STOP) || RPTR_is_set(RPTR_RX_LOST) ) {
+      RPTR_clear(RPTR_RX_STOP|RPTR_RX_LOST);
       voicedata.pktcount = 0x40;
       voicedata.rssi     = swap16(gmsk_get_rssi_avrge());
       append_crc_ccitt((char *)&voicedata, sizeof(voicedata));
       data_transmit((char *)&voicedata, sizeof(voicedata));
-#else
-      ctrldata.head.cmd = RPTR_EOT;
-      ctrldata.rsvd     = voicedata.pktcount;
-      append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
-      data_transmit((char *)&ctrldata, sizeof(ctrldata));
-#endif
       transmission = false;
-    } // fi start detected
-    if (RPTR_is_set(RPTR_RX_LOST)) {
-      RPTR_clear(RPTR_RX_LOST);
-#ifdef SIMPLIFIED_FIFO
-  // simplified Fifo buffer behavior, as requested by DG1HT
-      voicedata.pktcount = 0x40;
-      voicedata.rssi     = swap16(gmsk_get_rssi_avrge());
-      append_crc_ccitt((char *)&voicedata, sizeof(voicedata));
-      data_transmit((char *)&voicedata, sizeof(voicedata));
-#else
-      ctrldata.head.cmd = RPTR_RXLOST;
-      ctrldata.rsvd     = voicedata.pktcount;
-      append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
-      data_transmit((char *)&ctrldata, sizeof(ctrldata));
-#endif
-      transmission = false;
-    } // fi start detected
+    } // fi stop detected
     if (RPTR_is_set(RPTR_RX_HEADER)) {
       RPTR_clear(RPTR_RX_HEADER);
       if (!transmission) {
