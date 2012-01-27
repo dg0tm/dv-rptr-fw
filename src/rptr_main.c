@@ -72,6 +72,7 @@
  * 2012-01-11 V1.10d BugFix Pattern-Handling if PLL not correct an a to early match appears
  * 2012-01-22 V1.10e BugFix in controls.c module (dead carrier tx)
  * 2012-01-26 V1.20  THE LAST TRY: pic21mode.h, new reduced incompatible!!! interface
+ *                   Replacement-Header, when VOICE w/o HEADER
  *
  *
  *
@@ -540,6 +541,7 @@ __inline void handle_pc_paket(int len) {
   case RPTR_DATA:		// transmit data (voice and slowdata or sync)
     if (status_control & STA_TXENABLE_MASK) {
       if (rptr_tx_state <= RPTRTX_preamble) {
+	 rptr_replacement_header();
          rptr_transmit();		// Turn on Xmitter
          add_icom_voice_reset();
       } // fi
