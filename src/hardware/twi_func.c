@@ -28,6 +28,8 @@
  * Report:
  * 2011-07-03  JA  BugFix: ee_write works now with "ack polling", no additional char written
  * 2011-12-15  JA  BugFix: TXCOMP-INT-enabeling must be after transfer-start
+ * 2012-01-28  JA  BugFix: EEread-NAK generates no NAK-Int-Request
+ * 2012-01-29  JA  reg_read() implemented
  *
  * ToDo / Bugs:
  * Various bugs bring dvfw to hang (display / wait non-installed EEProm!!!
@@ -82,7 +84,7 @@ void twi_startpdca(const ttwijob *job) {
   TWIIO.cr     = AVR32_TWI_MSEN_MASK;
   TWI_PDAC.cr  = AVR32_PDCA_TEN_MASK;
   // TXCOMP set to low with the beginning of the transfer...
-  TWIIO.ier    = AVR32_TWI_IER_TXCOMP_MASK|AVR32_TWI_IER_NACK_MASK;
+  TWIIO.ier    = AVR32_TWI_IER_NACK_MASK|AVR32_TWI_IER_TXCOMP_MASK;
 }
 
 
@@ -90,9 +92,10 @@ __inline void twi_startmultipleread(const ttwijob *job) {
   TWIIO.idr    = AVR32_TWI_IDR_TXCOMP_MASK;
   TWI_PDAC.mar = (U32)job->buffer;
   TWI_PDAC.tcr = job->len-1;
-  TWI_PDAC.ier = AVR32_PDCA_IER_TRC_MASK;
   TWIIO.cr     = AVR32_TWI_MSEN_MASK;
   TWI_PDAC.cr  = AVR32_PDCA_TEN_MASK;
+  TWI_PDAC.ier = AVR32_PDCA_IER_TRC_MASK;	// multiple read done, one byte left (read+STOP)
+  TWIIO.ier    = AVR32_TWI_IER_NACK_MASK;	// when no device -> a NAK receives after address
 }
 
 
@@ -170,6 +173,7 @@ INTERRUPT_FUNC twi_interrupt(void) {
   TWIrjob++;					// next job / this one is done
   if (currjob->func != NULL) {
     if (twisr&AVR32_TWI_SR_NACK_MASK) {
+      TWI_PDAC.idr = AVR32_PDCA_IDR_TRC_MASK;	// stop PDAC (prev. reading mode)
       /*U32 txed_data = currjob->len - leftb - 1;
       if ((currjob->cmd == TWIwrite)||(currjob->cmd == EEwrite)) {
 	if ((twisr&AVR32_TWI_SR_TXRDY_MASK)==0) txed_data--;
@@ -323,9 +327,17 @@ tTWIresult reg_write(unsigned char adr, unsigned char reg, unsigned int value, c
 }
 
 
-
 tTWIresult reg_read(unsigned char adr, unsigned char reg, char *dest, char reg_size, twi_handler RetFunc) {
-  return TWIerror;	// no implementation jet
+  ttwijob *newjob = twi_getnewjob();
+  if ( newjob == NULL ) return TWIbusy;
+  newjob->cmd  = REGread;
+  newjob->device = adr;
+  newjob->addr   = reg;
+  newjob->buffer = dest;
+  newjob->len  = reg_size;
+  newjob->func = RetFunc;
+  twi_acknewjob();
+  return TWIok;
 }
 
 

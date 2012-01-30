@@ -21,10 +21,28 @@ void add_icom_voice_reset(void) {
 }
 
 
-void add_icom_voice_2_rptr(unsigned char number, const char *voicepacket) {
-  U8 curr_transmitpos = rptr_get_txpos();
+void add_fifo_voice_2_rptr(unsigned char number, const char *voicepacket) {
   U8 buffer_nr;
-  U8 nr_difference;
+  if (number & 0x40) {
+    rptr_endtransmit(0xFF);
+  } else {
+    buffer_nr = (last_voicepacket+1)%VoiceTxBufSize;
+    if (RPTR_is_set(RPTR_TX_EMPTY)) {
+      buffer_nr = (rptr_get_txpos()+2)%VoiceTxBufSize;
+    }
+    rptr_addtxvoice((tds_voicedata *)voicepacket, buffer_nr);
+    last_voicepacket = buffer_nr;
+    if ((voicepacket[9]==0x55)&&(voicepacket[10]==0x55)&&(voicepacket[11]==0x55)) {
+      rptr_endtransmit(0xFF);
+    }
+  }
+}
+
+
+void add_icom_voice_2_rptr(unsigned char number, const char *voicepacket) {
+  U8 curr_transmitpos;
+  U8 buffer_nr;
+
   if (number & 0x40) {
     rptr_endtransmit(0xFF);
   } else {
@@ -36,12 +54,18 @@ void add_icom_voice_2_rptr(unsigned char number, const char *voicepacket) {
       packet_marker = 0;
     }
     packet_marker |= (1<<number);
-    nr_difference = (txbuf_areastart+number+VoiceTxBufSize-curr_transmitpos) % VoiceTxBufSize;
-    if (nr_difference >= (VoiceTxBufSize-DSTAR_SYNCINTERVAL)) {
-      txbuf_areastart += DSTAR_SYNCINTERVAL;
-      if (txbuf_areastart > (VoiceTxBufSize-DSTAR_SYNCINTERVAL) )
-	txbuf_areastart = 0;
+
+    if (RPTR_is_set(RPTR_TX_EMPTY)) {
+      curr_transmitpos = rptr_get_txpos();
+      txbuf_areastart = curr_transmitpos - (curr_transmitpos % DSTAR_SYNCINTERVAL);
+      if (number <= (curr_transmitpos%DSTAR_SYNCINTERVAL)) {
+	txbuf_areastart += DSTAR_SYNCINTERVAL;
+	if (txbuf_areastart > (VoiceTxBufSize-DSTAR_SYNCINTERVAL) )
+	  txbuf_areastart = 0;
+      }
+      packet_marker = 0;
     }
+
     buffer_nr = txbuf_areastart + number;
     rptr_addtxvoice((tds_voicedata *)voicepacket, buffer_nr);
     last_voicepacket = number;
@@ -50,4 +74,3 @@ void add_icom_voice_2_rptr(unsigned char number, const char *voicepacket) {
     }
   }
 }
-
