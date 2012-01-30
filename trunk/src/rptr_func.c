@@ -627,16 +627,6 @@ void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
     unsigned int nr_difference = (pkt_nr+VoiceTxBufSize-TxVoice_WrPos) % VoiceTxBufSize;
     if (nr_difference < VOICE_TX_ALLOWED_GAP)
       TxVoice_WrPos = (pkt_nr+1) % VoiceTxBufSize;
-/*
-    // a numbered packet in the empty buffer area results in an update of WrPos
-    // (last packet). Gaps are initialized with Silence.
-    if ( ((TxVoice_WrPos > TxVoice_RdPos) &&
-	 ((pkt_nr >= TxVoice_WrPos)||(pkt_nr < TxVoice_RdPos))) ||
-	 ((TxVoice_WrPos < TxVoice_RdPos) &&
- 	 ((pkt_nr >= TxVoice_WrPos)&&(pkt_nr < TxVoice_RdPos))) ) {
-      TxVoice_WrPos = (pkt_nr+1) % VoiceTxBufSize;
-    }
-*/
   } // esle with gaps
 #endif
   TxVoice_StopPos = TxVoice_RdPos;	// update stop-position, long-gap silence

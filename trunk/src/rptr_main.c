@@ -73,6 +73,7 @@
  * 2012-01-22 V1.10e BugFix in controls.c module (dead carrier tx)
  * 2012-01-26 V1.20  THE LAST TRY: pic21mode.h, new reduced incompatible!!! interface
  *                   Replacement-Header, when VOICE w/o HEADER
+ * 2012-01-30 V1.20a Only a simple Fifo logic, ignoring frame numberation completly
  *
  *
  *
@@ -546,7 +547,7 @@ __inline void handle_pc_paket(int len) {
          add_icom_voice_reset();
       } // fi
     }
-    add_icom_voice_2_rptr(rxdatapacket.data[PKT_PARAM_IDX+1], &rxdatapacket.data[PKT_PARAM_IDX+4]);
+    add_fifo_voice_2_rptr(rxdatapacket.data[PKT_PARAM_IDX+1], &rxdatapacket.data[PKT_PARAM_IDX+4]);
     break;
   case RPTR_EOT:		// end transmission with EOT tail
     // ignore
