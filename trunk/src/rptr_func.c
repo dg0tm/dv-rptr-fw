@@ -41,7 +41,8 @@
  * 2011-12-28  JA  long-roger-beep bug fixed
  * 2012-01-06  JA  keep BufferWritePos to actual position (simplified fifo)
  * 2012-01-11  JA  BugFix Pattern-Handling if PLL not correct an a to early match appears.
- *
+ * 2012-02-01  JA  Restoring FRAME-SYNC while transmitting silence frames
+ *                 Replacement-Header: MyCall/Sign defined in rptr_func.h
  *
  * Attention:
  * Prevent sending 1-voice-frame like HEADER - VOICE - EOT. Minimum 2 frames!
@@ -141,6 +142,16 @@ __inline void dstar_scramble_data(tds_voicedata *dest) {
 }
 
 
+void rptr_clear_tx_buffer(void) {
+  int cnt;
+  for (cnt=0; cnt<VoiceTxBufSize; cnt++) {
+    memcpy(&DStar_TxVoice[cnt], SilenceFrame, sizeof(tds_voicedata));
+    if ((cnt%DSTAR_SYNCINTERVAL)==0)
+      dstar_insert_sync(&DStar_TxVoice[cnt]);
+  } // rof all TX-buffers
+}
+
+
 
 /*! \name RPTR Handler Functions
  */
@@ -169,6 +180,7 @@ void rptr_transmit_stopframe(void) {
 
 
 void rptr_transmit_voicedata(void) {
+  int last_cycle = (TxVoice_RdPos+DSTAR_SYNCINTERVAL-1) % DSTAR_SYNCINTERVAL;
   tds_voicedata *voicedat = &DStar_TxVoice[TxVoice_RdPos];
   // replace voice data, currently transmitting with Silence
   tds_voicedata *voicejusttxed = &DStar_TxVoice[(TxVoice_RdPos+VoiceTxBufSize-1) % VoiceTxBufSize];
@@ -192,6 +204,9 @@ void rptr_transmit_voicedata(void) {
   // replace voice data, currently transmitting with Silence
   // DSTAR_BEFOREFRAMEENDS < 32: All bits we need for the current tx are in gmsk-buffer
   memcpy(voicejusttxed, SilenceFrame, sizeof(tds_voicedata));
+  if (last_cycle==0) {	// insert 55 2D 16 pattern every 21frame (silence tx only)
+    dstar_insert_sync(voicejusttxed);
+  } // fi restore sync
   RPTR_TxFrameCount++;
 }
 
@@ -215,6 +230,7 @@ void rptr_restart_header(void) {
 void rptr_begin_new_tx(void) {
   gmsk_set_reloadfunc(rptr_restart_header);
   gmsk_transmit((U32 *)lastframe_dstar, DSTAR_LASTFRAMEBITSIZE, 1);
+  rptr_clear_tx_buffer();
 }
 
 
@@ -453,13 +469,10 @@ void rptr_update_header() {
 
 
 void rptr_init_data(void) {
-  U8 cnt;
   rptr_tx_state = RPTRTX_disabled;
   rptr_update_header();
   RPTR_Flags = 0;
-  for (cnt=0; cnt<VoiceTxBufSize; cnt++) {
-    memcpy(&DStar_TxVoice[cnt], SilenceFrame, sizeof(tds_voicedata));
-  }
+  rptr_clear_tx_buffer();
 }
 
 
@@ -503,8 +516,8 @@ void rptr_routeflags(void) {
 
 void rptr_replacement_header(void) {
   memcpy(DSTAR_HEADER.YourCall, "CQCQCQ  ", 8);
-  memcpy(DSTAR_HEADER.MyCall, DSTAR_HEADER.RPT1Call, 8);
-  memcpy(&DSTAR_HEADER.MyCall[7], " RPTR", 5);
+  memcpy(DSTAR_HEADER.MyCall, REPLACEMENT_HDR_CALL, 8);
+  memcpy(DSTAR_HEADER.MyCall2, REPLACEMENT_HDR_SIGN, 4);
   DSTAR_HEADER.flags[0] = FLAG0_RPT_MASK;
   rptr_update_header();
 }
@@ -579,6 +592,7 @@ void rptr_transmit(void) {
     RPTR_Flags |= RPTR_TRANSMITTING;
     LED_Set(LED_RED);
     rptr_tx_state = RPTRTX_preamble;
+    rptr_clear_tx_buffer();
   }
   TxVoice_WrPos = 0;
 }
