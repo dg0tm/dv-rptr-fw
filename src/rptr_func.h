@@ -87,6 +87,8 @@ extern trptr_tx_state 		rptr_tx_state;
 #define DSTAR_DATAIDLETIMEOUT	20	// Frames w/o new data in slow-data-only tx mode
 
 
+#define REPLACEMENT_HDR_CALL	"        "	// 8 chars of MyCall
+#define REPLACEMENT_HDR_SIGN	"miss"		// 4 chars of MyCall2
 
 
 void	rptr_init_data(void);
