@@ -77,7 +77,8 @@
  * 2012-02-01 V1.11  TX-Buffer will be cleared before TX starts completly.
  *                   On longer gaps, a FRAME-SYNC is added every 21 silence-packet
  *                   A additional byte "transmit position" will be appear in STATUS pkt
- *                   A repacement-header will be createdm when tx starts with SYNC.
+ *                   A repacement-header will be created when tx starts with SYNC.
+ * 2012-02-02 V1.11a BugFix: Icom-Voice sorting removed
  *
  * ToDo:
  * - USB not working after reset cmd, maybe a USB-unplug msg is needed
@@ -371,7 +372,6 @@ void sfc_twi_wrt_return(tTWIresult res, unsigned int len) {
     append_crc_ccitt(answer.data, anslen);
     data_transmit(answer.data, anslen);
   } // fi send
-
 }
 
 
@@ -565,7 +565,7 @@ __inline void handle_pc_paket(int len) {
         current_txid = rxdatapacket.data[PKT_PARAM_IDX];
       } // fi
       // -> ignore a HEADER msg with same TXID while sending
-      add_icom_voice_reset();
+      //add_icom_voice_reset();
     } else
       pc_send_byte(NAK);
     // keep 2 bytes for future use, keep layout identical to RX
@@ -579,14 +579,13 @@ __inline void handle_pc_paket(int len) {
 	current_txid = rxdatapacket.data[PKT_PARAM_IDX];
       } // if idle
       // (transmission use last header)
-      add_icom_voice_reset();
+      //add_icom_voice_reset();
     } else
       pc_send_byte(NAK);
     break;
   case RPTR_DATA:		// transmit data (voice and slowdata or sync)
     if (rxdatapacket.data[PKT_PARAM_IDX] == current_txid)
-      add_icom_voice_2_rptr(rxdatapacket.data[PKT_PARAM_IDX+1], &rxdatapacket.data[PKT_PARAM_IDX+4]);
-      //add_multi_voice_2_rptr(len);
+      add_multi_voice_2_rptr(len);
     break;
   case RPTR_EOT:		// end transmission with EOT tail
     if (len == 3) {

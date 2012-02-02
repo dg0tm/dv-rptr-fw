@@ -44,6 +44,9 @@
  * 2012-02-01  JA  Restoring FRAME-SYNC while transmitting silence frames
  *                 Replacement-Header: MyCall/Sign defined in rptr_func.h
  *
+ * ToDo:
+ * - Bug WrPos
+ *
  * Attention:
  * Prevent sending 1-voice-frame like HEADER - VOICE - EOT. Minimum 2 frames!
  */
@@ -71,6 +74,9 @@
 #define RPTR_PREAMBLE_TO	DSTAR_SYNCINTERVAL	// value in 20ms
 
 #define VOICE_TX_ALLOWED_GAP	(VoiceTxBufSize/3)
+
+#define VOICE_TX_DIFFERENCE(a,b)	((a+VoiceTxBufSize-b) % VoiceTxBufSize)
+//#define VOICE_TX_DIFFERENCE(a,b)	((a-b) % VoiceTxBufSize)
 
 
 ALIGNED_DATA static const unsigned long preamble_dstar[5] = {
@@ -183,7 +189,7 @@ void rptr_transmit_voicedata(void) {
   int last_cycle = (TxVoice_RdPos+DSTAR_SYNCINTERVAL-1) % DSTAR_SYNCINTERVAL;
   tds_voicedata *voicedat = &DStar_TxVoice[TxVoice_RdPos];
   // replace voice data, currently transmitting with Silence
-  tds_voicedata *voicejusttxed = &DStar_TxVoice[(TxVoice_RdPos+VoiceTxBufSize-1) % VoiceTxBufSize];
+  tds_voicedata *voicejusttxed = &DStar_TxVoice[VOICE_TX_DIFFERENCE(TxVoice_RdPos,1)];
   if (TxVoice_RdPos == TxVoice_WrPos) {		// Buffer is STILL empty
     RPTR_set(RPTR_TX_EMPTY);			// set flag to signalling
     TxVoice_WrPos = (TxVoice_WrPos+1) % VoiceTxBufSize;	// increment WritePos
@@ -238,7 +244,7 @@ void rptr_break_current(void) {
   gmsk_set_reloadfunc(rptr_begin_new_tx);
   gmsk_transmit(DStar_TxVoice[TxVoice_RdPos].packet, DSTAR_VOICEFRAMEBITSIZE, 1);
   // clear last txed voice, like in rptr_transmit_voicedata()
-  memcpy(&DStar_TxVoice[(TxVoice_RdPos+VoiceTxBufSize-1) % VoiceTxBufSize], SilenceFrame, sizeof(tds_voicedata));
+  memcpy(&DStar_TxVoice[VOICE_TX_DIFFERENCE(TxVoice_RdPos,1)], SilenceFrame, sizeof(tds_voicedata));
   rptr_tx_state = RPTRTX_lastframe;
 }
 
@@ -516,7 +522,7 @@ void rptr_routeflags(void) {
 
 void rptr_replacement_header(void) {
   memcpy(DSTAR_HEADER.YourCall, "CQCQCQ  ", 8);
-  memcpy(DSTAR_HEADER.MyCall, REPLACEMENT_HDR_CALL, 8);
+  memcpy(DSTAR_HEADER.MyCall,  REPLACEMENT_HDR_CALL, 8);
   memcpy(DSTAR_HEADER.MyCall2, REPLACEMENT_HDR_SIGN, 4);
   DSTAR_HEADER.flags[0] = FLAG0_RPT_MASK;
   rptr_update_header();
@@ -616,40 +622,29 @@ void rptr_endtransmit(unsigned char pkt_nr_stop) {
  * keep an eye of buffer overflow's and write to the buffer, who was in tx
  */
 void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
-#ifdef SIMPLIFIED_FIFO
-  // simplified Fifo buffer behavior, as requested by DG1HT
-  if (pkt_nr & 0x40) {
-    rptr_endtransmit(TxVoice_WrPos);
-  } else {
-    memcpy(&DStar_TxVoice[TxVoice_WrPos], buf, sizeof(tds_voicedata));	// copy new data
-    TxVoice_WrPos = (TxVoice_WrPos+1) % VoiceTxBufSize;	// inc write-position
-  }
-#else
   tds_voicedata *new_data;
-  if ((pkt_nr >= VoiceTxBufSize) || (pkt_nr == (TxVoice_RdPos+(VoiceTxBufSize-1)) % VoiceTxBufSize))
+  TxVoice_StopPos = TxVoice_RdPos;	// update stop-position, long-gap silence
+
+  if ((pkt_nr >= VoiceTxBufSize) || (pkt_nr == VOICE_TX_DIFFERENCE(TxVoice_RdPos, 1)))
     return;		// prevent buffer overflow OR writing on current TXed buffer.
+
   new_data = &DStar_TxVoice[pkt_nr];
   memcpy(new_data, buf, sizeof(tds_voicedata));	// copy new data
-  /* no manipulation on data anymore
-  if (cycle==0) dstar_insert_sync(new_data);	// Sync-Frame needed?
-  */
   if (pkt_nr == TxVoice_WrPos) {		// expected packet from PC...
     TxVoice_WrPos = (TxVoice_WrPos+1) % VoiceTxBufSize;
   } else {		// unsorted packet - expand transmit window to pkt_nr
     // a numbered packet in the empty buffer area results in an update of WrPos
     // (last packet), IF(!) the gap is lower as a threshold
-    unsigned int nr_difference = (pkt_nr+VoiceTxBufSize-TxVoice_WrPos) % VoiceTxBufSize;
+    unsigned int nr_difference = VOICE_TX_DIFFERENCE((U32)pkt_nr, TxVoice_WrPos);
     if (nr_difference < VOICE_TX_ALLOWED_GAP)
       TxVoice_WrPos = (pkt_nr+1) % VoiceTxBufSize;
   } // esle with gaps
-#endif
-  TxVoice_StopPos = TxVoice_RdPos;	// update stop-position, long-gap silence
   RPTR_clear(RPTR_TX_EMPTY);
 }
 
 
 __inline unsigned char rptr_get_unsend(void) {
-  return (TxVoice_WrPos+VoiceTxBufSize-TxVoice_RdPos) % VoiceTxBufSize;
+  return VOICE_TX_DIFFERENCE(TxVoice_WrPos, TxVoice_RdPos);
 }
 
 
