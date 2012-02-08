@@ -60,10 +60,6 @@
 #define DSTAR_SYNCSTOP		0xF590AA00	// EOT, is inverted START Pattern
 #define DSTAR_FRAMESYNC		0x162D5500	// all >> direction
 
-
-#define FLAG0_USERPT_MASK	0x40		// Bit6 of flags[0]
-#define FLAG0_EMERG_MASK	0x08		// Bit3 of flags[0]
-
 typedef enum {
   RPTnoinfo=0, RPTunavailable, RPTnoreply, RPTack,
   RPTresend, RPTunused, RPTautoreply, RPTcontrolled
@@ -89,7 +85,7 @@ typedef struct __attribute__((__packed__)) {
 
 typedef struct __attribute__((__packed__)) {
   union {
-    unsigned long packet[3];
+    unsigned int packet[3];
     struct {
       unsigned char voice[9];
       unsigned char data[3];
