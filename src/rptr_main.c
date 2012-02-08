@@ -702,34 +702,18 @@ void handle_hfdata(void) {
     } // fi start detected
     if (RPTR_is_set(RPTR_RX_STOP)) {
       RPTR_clear(RPTR_RX_STOP);
-#ifdef SIMPLIFIED_FIFO
-  // simplified Fifo buffer behavior, as requested by DG1HT
-      voicedata.pktcount = 0x40;
-      voicedata.rssi     = swap16(gmsk_get_rssi_avrge());
-      append_crc_ccitt((char *)&voicedata, sizeof(voicedata));
-      data_transmit((char *)&voicedata, sizeof(voicedata));
-#else
       ctrldata.head.cmd = RPTR_EOT;
       ctrldata.rsvd     = voicedata.pktcount;
       append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
       data_transmit((char *)&ctrldata, sizeof(ctrldata));
-#endif
       transmission = false;
     } // fi start detected
     if (RPTR_is_set(RPTR_RX_LOST)) {
       RPTR_clear(RPTR_RX_LOST);
-#ifdef SIMPLIFIED_FIFO
-  // simplified Fifo buffer behavior, as requested by DG1HT
-      voicedata.pktcount = 0x40;
-      voicedata.rssi     = swap16(gmsk_get_rssi_avrge());
-      append_crc_ccitt((char *)&voicedata, sizeof(voicedata));
-      data_transmit((char *)&voicedata, sizeof(voicedata));
-#else
       ctrldata.head.cmd = RPTR_RXLOST;
       ctrldata.rsvd     = voicedata.pktcount;
       append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
       data_transmit((char *)&ctrldata, sizeof(ctrldata));
-#endif
       transmission = false;
     } // fi start detected
     if (RPTR_is_set(RPTR_RX_HEADER)) {
