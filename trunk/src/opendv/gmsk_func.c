@@ -859,7 +859,7 @@ static __inline void gmsk_starttxdelay(void) {
 #define GMSK_CLR_TX_MUTEX()	//Enable_global_interrupt()
 
 
-void gmsk_transmit(unsigned long *data, unsigned int length_in_bits, unsigned int alertbitpos) {
+void gmsk_transmit(const unsigned int *data, unsigned int length_in_bits, unsigned int alertbitpos) {
   if ((GMSK_TX_TIMER.sr&AVR32_TC_CLKSTA_MASK) == 0)	{ // if clock not enabled
     gmsk_nextbitlen  = 0;
     gmsk_nextdataptr = NULL;
@@ -1002,9 +1002,9 @@ void gmsk_set_receivefkt(tgmsk_func fkt_received) {
 }
 
 
-__inline void gmsk_set_receivebuf(unsigned long *rxbuf, int bit_len) {
+__inline void gmsk_set_receivebuf(unsigned int *rxbuf, int bit_len) {
   GMSK_SET_RX_MUTEX();
-  demod_rxptr  = rxbuf;
+  demod_rxptr  = (U32 *)rxbuf;
   demod_rxsize = bit_len;
   GMSK_CLR_RX_MUTEX();
 }

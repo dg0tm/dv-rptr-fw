@@ -97,7 +97,7 @@ typedef struct __attribute__((__packed__)) {
 typedef char tSlowDataFrame[60];
 
 
-void	dstar_buildheader(unsigned long *wrbuffer, const tds_header *header);
+void	dstar_buildheader(unsigned int *wrbuffer, const tds_header *header);
 
 // Creates a 60byte slow-data stream filled with the radio header (used 4 idle data):
 // function is obsolete
