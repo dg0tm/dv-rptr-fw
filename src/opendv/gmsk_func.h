@@ -84,7 +84,7 @@ void	gmsk_exit(void);
 void	gmsk_stoptimer(void);
 #endif
 
-void	gmsk_transmit(unsigned long *data, unsigned int length_in_bits, unsigned int alertbitpos);
+void	gmsk_transmit(const unsigned int *data, unsigned int length_in_bits, unsigned int alertbitpos);
 void	gmsk_modulator_stop(void);
 
 void	gmsk_set_mod_hub(short int level);	// free modulation-level adjustment
@@ -107,7 +107,7 @@ void	gmsk_set_patternfunc(tpattern_func patternhandler);
 void	gmsk_set_unlockedfunc(tgmsk_func unlock_handler);
 
 void	gmsk_set_receivefkt(tgmsk_func fkt_received);
-void	gmsk_set_receivebuf(unsigned long *rxbuf, int bit_len);
+void	gmsk_set_receivebuf(unsigned int *rxbuf, int bit_len);
 
 
 int	gmsk_channel_idle(void);

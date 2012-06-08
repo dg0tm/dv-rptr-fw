@@ -74,6 +74,26 @@
 #define DAC_MIDDLE		0		// Signed Offset to real Bit-Middle
 
 
+// *** AMBE-Addon ***
+
+// AMBE Priorities
+#define AMBE_EPR_PRIO		AVR32_INTC_INT1	// >= als TXRDY, damit vor TRXEND
+#define AMBE_TRXSTART_PRIO	AVR32_INTC_INT3
+#define AMBE_TRXEND_PRIO	AVR32_INTC_INT1
+#define AMBE_TIMER_PRIO		AVR32_INTC_INT0
+
+// PDCA Channels for AMBE:
+#define AMBE_CHANNEL0		0
+#define AMBE_CHANNEL1		1
+
+// Externe Interrupts EIC & NMI:
+#define AMBE_EPR_INT		AVR32_EIC_INT3	// connected to PA23
+
+// AMBE Timer
+#define AMBE_TIMER_CH		2
+
+// *** End AMBE-Addon Defs ***
+
 
 #ifdef DVRPTR
 
@@ -98,6 +118,12 @@
 #define USBID_PIN		AVR32_PIN_PA26
 #define USBVBOF_PIN		AVR32_PIN_PA27
 
+// GPIOS for AMBE-aAddon:
+#define MIC_PTT_PIN		(AVR32_PIN_PB05-32)
+#define AMBE_SOFTEN_PIN		AVR32_PIN_PA21		// same EXP_IO21_PIN
+#define AMBE_CSEL_PIN		AVR32_PIN_PA20		// same EXP_IO20_PIN
+
+
 // *** Definition of Port A ***
 #define GPIO0_PULLUP		(1<<AVR32_PIN_PA03)|(1<<AVR32_PIN_PA04)|(1<<AVR32_PIN_PA08)|	\
 				(1<<AVR32_PIN_PA11)|(1<<AVR32_PIN_PA17)|(1<<EXP_IO20_PIN)|	\
@@ -105,20 +131,11 @@
 				(1<<AVR32_PIN_PA24)|(1<<AVR32_PIN_PA25)|(1<<AVR32_PIN_PA28)| \
 				(1<<AVR32_PIN_PA29)
 // define GPIO Outputs
-#ifdef DEBUG
-#define GPIO0_ODER		(1<<LED_GREEN_PIN)|(1<<LED_RED_PIN)|(1<<PTT_OUT_PIN)|	\
-	                        (1<<DACLD_PIN)|(1<<USBVBOF_PIN)|	\
-	                        (1<<EXP_IO21_PIN)|(1<<EXP_IO23_PIN)
-#else
 #define GPIO0_ODER		(1<<LED_GREEN_PIN)|(1<<LED_RED_PIN)|(1<<PTT_OUT_PIN)|	\
 	                        (1<<DACLD_PIN)|(1<<USBVBOF_PIN)
-#endif
-
 
 #define GPIO0_OVRINIT		(1<<LED_GREEN_PIN)|(1<<DACLD_PIN)
 
-
-//#define TC_A1_OUT
 
 #ifdef TC_A1_OUT
 #define GPIO0_PMR0		(1<<AVR32_TC_A1_0_0_PIN)
@@ -149,15 +166,15 @@
 #define RS232CTS_PIN		(AVR32_USART1_CTS_0_0_PIN-32)
 #define RS232RTS_PIN		(AVR32_USART1_RTS_0_0_PIN-32)
 
-#define GPIO1_PULLUP		0
+#define GPIO1_PULLUP		(1<<MIC_PTT_PIN)
 #define GPIO1_ODER		(1<<WATCHDOG_PIN)
 #define GPIO1_OVRINIT		(1<<WATCHDOG_PIN)
 
 #define GPIO1_PMR0		0
 #define GPIO1_PMR1		(1<<RS232RXD_PIN)|(1<<RS232TXD_PIN)
 
-#define GPIO1_DISABLE_MASK	(1<<RS232RXD_PIN)|(1<<RS232TXD_PIN)|	\
-                                (1<<RS232CTS_PIN)|(1<<RS232RTS_PIN)
+#define GPIO1_DISABLE_MASK	(1<<RS232RXD_PIN)|(1<<RS232TXD_PIN)
+//|                             (1<<RS232CTS_PIN)|(1<<RS232RTS_PIN)
 
 
 #define LED_GREEN		LED_GREEN_PIN
@@ -172,6 +189,9 @@
 #define enable_ptt()		gpio0_set(PTT_OUT_PIN)
 #define disable_ptt()		gpio0_clr(PTT_OUT_PIN)
 #define is_pttactive()		(gpio0_readovr(PTT_OUT_PIN))
+
+#define get_mic_ptt_pin()	(gpio1_readpin(MIC_PTT_PIN))
+
 
 #define DEBUG_PIN1		EXP_IO21_PIN
 #define DEBUG_PIN2		EXP_IO23_PIN
@@ -326,8 +346,8 @@
 #define rs232_force_off()	// nothing defined, because no level-converter is on this board
 
 #ifdef DEBUG
-#define debugpin_set(pin)	gpio0_set(pin)
-#define debugpin_clr(pin)	gpio0_clr(pin)
+#define debugpin_set(pin)	//gpio0_set(pin)
+#define debugpin_clr(pin)	//gpio0_clr(pin)
 #else
 #define debugpin_set(pin)
 #define debugpin_clr(pin)

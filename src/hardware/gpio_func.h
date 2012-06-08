@@ -29,9 +29,6 @@
 #ifndef GPIO_FUNC_H_
 #define GPIO_FUNC_H_
 
-typedef enum {
-  CPLDdisabled, CPLDcfg_ambeact, CPLDcfg_codec, CPLDcfg_ambepas
-} tcpldmode;
 
 #ifndef DEBUG
 #define SLEEP()			__asm__ __volatile__ ("sleep 0");
@@ -45,8 +42,15 @@ void	gpio0_set(unsigned int pin);
 void	gpio0_clr(unsigned int pin);
 void	gpio0_tgl(unsigned int pin);
 
+void	gpio1_set(unsigned int pin);
+void	gpio1_clr(unsigned int pin);
+void	gpio1_tgl(unsigned int pin);
+
+
 unsigned int gpio0_readpin(unsigned int pin);
 unsigned int gpio0_readovr(unsigned int pin);
+
+unsigned int gpio1_readpin(unsigned int pin);
 
 // cpld_operate() löst RESET des AD73311|AMBE2020 (beide nur bei AMBE-mode).
 //void cpld_operate(void);

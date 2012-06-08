@@ -220,6 +220,10 @@ void cdc_receiving(void) {		// return: Anzahl empfangener Bytes im Fifo
       cdc_timeout_enabled = FALSE;
     }
   } // esle fi to
+  // chain-tx (>64 byte):
+  if (cdc_txbuffer_len > 0) {
+    cdc_transmit(cdc_txbuffer, cdc_txbuffer_len);
+  } // fi
 }
 
 

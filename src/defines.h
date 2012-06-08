@@ -27,7 +27,7 @@
 #ifndef DEFINES_H_
 #define DEFINES_H_
 
-#define FIRMWAREVERSION		0x1111
+#define FIRMWAREVERSION		0x1632
 
 // Version Vxx.yy (last digit is char ' ', a, b...)
 
@@ -39,7 +39,7 @@
  * Bugfixlevel   c - Increased with one or more bugfixes (at the same time)
  */
 
-#define RELEASE_STRING		"2012-02-02"	// Release Date
+#define RELEASE_STRING		"2012-05-24"	// Release Date
 
 
 #define VERSION_IDENT		"DV-RPTR R." RELEASE_STRING
@@ -92,12 +92,24 @@ typedef struct PACKED_DATA {
   unsigned char		cmd;
 } tRS232pktHeader;
 
+
 typedef struct PACKED_DATA {
   union {
     tRS232pktHeader	head;
     char		data[PAKETBUFFERSIZE];
   };
-} tRS232paket;
+} tRS232packet;
+
+
+typedef struct PACKED_DATA {
+  union {
+    struct {
+      tRS232pktHeader	head;
+      char		param[8];	// small amount of space (6 byte + 2 CRC)
+    };
+    char		data[8+4];
+  };
+} tTINYpacket;
 
 
 #endif

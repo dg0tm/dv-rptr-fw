@@ -1,9 +1,9 @@
 /*
- * rptr_func.c
+ * rptr_func.h
  *
  * realtime controlling openDV (D-Star) operation of DV-RPTR
  *
- *  Created on: 26.07.2011 fomr opendv_func
+ *  Created on: 26.07.2011 from opendv_func
  *      Author: Jan Alte, DO1FJN
  *
  *
@@ -61,9 +61,16 @@ extern unsigned int RPTR_Flags;
 // Transmit Flags Bit 9..15
 #define RPTR_TX_EMPTY		0x0200
 
+#define DGL_FRAME		0x0400
+#define DGL_HEADER		0x0800
+#define DGL_EOT			0x1000
+
+#define RPTR_AMBEDECODEHF	0x2000	// active, if decoding data from receiver (perm)
+#define RPTR_AMBEDECODEINET	0x4000	// active, if decoding data from internet (perm)
+
 #define RPTR_TRANSMITTING	0x8000	// permanent indicator, don't clear flag
 
-#define RPTR_INDICATOR_MASK	0x033F	// all w/o permanents
+#define RPTR_INDICATOR_MASK	0x1F3F	// all w/o permanents
 
 
 #define RPTR_is_set(f)		(RPTR_Flags&(f))
@@ -81,8 +88,6 @@ extern trptr_tx_state 		rptr_tx_state;
 
 #define DSTAR_BEFOREFRAMEENDS	16	// 16 bit-time before gmsk-modulator-data runs out
 // attention: this value must be smaller than 32 (last 32bit must be alreay loaded in GMSK fct)
-
-#define DSTAR_DECODE_TO		250	// 5 Sekunden (Minimum-Wert ist 8 = eine Header-Länge)
 
 #define DSTAR_DATAIDLETIMEOUT	20	// Frames w/o new data in slow-data-only tx mode
 
@@ -143,6 +148,11 @@ void	rptr_copyrxvoice(tds_voicedata *dest, unsigned char nr);
 // if no pattern detected, stop RX + set LOST flag
 void	rptr_forcefirstsync(void);
 
+
+void	rptr_transmit_fullpreamble(void);	// used in dongle module
+void	rptr_transmit_shortpreamble(void);
+void	rptr_transmit_eotpattern(void);		// used in dongle module
+void	rptr_transmit_brkeot(void);
 
 #endif // DSTAR_FUNC_H_
 

@@ -40,7 +40,7 @@
 
 
 
-void dstar_buildheader(unsigned long *wrbuffer, const tds_header *header) {
+void dstar_buildheader(unsigned int *wrbuffer, const tds_header *header) {
   int hdr_bitcnt, hdr_bitpos, hdr_bytcnt; //, hdr_interbit;
   char *hdr_rptr = (char *)header;	// Pointer to Original Header
   char *hdr_wbuf = (char *)wrbuffer;	// Byte-Pointer to storage buffer

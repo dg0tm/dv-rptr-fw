@@ -67,6 +67,9 @@
 
 #include "transceiver.h"
 
+#include "TLV320AIC.h"
+#include "ambe_func.h"		// AMBE addon board functions
+
 #include "compiler.h"
 #include <string.h>
 
@@ -79,14 +82,14 @@
 //#define VOICE_TX_DIFFERENCE(a,b)	((a-b) % VoiceTxBufSize)
 
 
-ALIGNED_DATA static const unsigned long preamble_dstar[5] = {
+ALIGNED_DATA static const unsigned int preamble_dstar[5] = {
   0x55555555, 0x55555555,
   0x55555555, 0x55555555,
   0x37050000
 };
 #define DSTAR_PREAMPLELEN	(2*64+15)
 
-ALIGNED_DATA static const unsigned long lastframe_dstar[2] = {
+ALIGNED_DATA static const unsigned int lastframe_dstar[2] = {
   0x55555555,
   0xC87A0000
 };
@@ -94,7 +97,7 @@ ALIGNED_DATA static const unsigned long lastframe_dstar[2] = {
 
 
 // AMBE-no Voice Data (just silence) added with 'fff' on slow data
-ALIGNED_DATA static const unsigned long SilenceFrame[3] = {
+ALIGNED_DATA static const unsigned int SilenceFrame[3] = {
   0x8e4fb8b0, 0xd55f2ba0, 0xe81629f5
 };
 
@@ -116,8 +119,8 @@ tds_header DSTAR_HEADER = {		// actual header for tx in decoded form
 };
 
 
-static unsigned long	DStar_HeaderBS[DSTAR_HEADERBSBUFSIZE];	// Header Bitstream for TX
-static unsigned long	DStar_RxHeader[DSTAR_HEADERBSBUFSIZE];	// Received Header Bitstream
+static unsigned int	DStar_HeaderBS[DSTAR_HEADERBSBUFSIZE];	// Header Bitstream for TX
+static unsigned int	DStar_RxHeader[DSTAR_HEADERBSBUFSIZE];	// Received Header Bitstream
 
 
 ALIGNED_DATA static tds_voicedata	DStar_RxVoice[VoiceRxBufSize];
@@ -141,10 +144,12 @@ __inline void dstar_insert_sync(tds_voicedata *dest) {
   dest->data[2] = 0x16;
 }
 
-__inline void dstar_scramble_data(tds_voicedata *dest) {
-  dest->data[0] ^= 0x70;
-  dest->data[1] ^= 0x4F;
-  dest->data[2] ^= 0X93;
+__inline void rptr_transmit_fullpreamble(void) {
+  gmsk_transmit(preamble_dstar, DSTAR_PREAMPLELEN, 1);
+}
+
+__inline void rptr_transmit_eotpattern(void) {
+  gmsk_transmit(lastframe_dstar, DSTAR_LASTFRAMEBITSIZE_TX, DSTAR_LASTFRAMEBITSIZE_TX-2);
 }
 
 
@@ -179,9 +184,11 @@ void rptr_stopped(void) {
 // rptr_transmit_stopframe() append a END-OF-TRANSMISSION id after voice data (no slowdata)
 // after transmission, rptr_stopped() is called back from gmsk module.
 void rptr_transmit_stopframe(void) {
-  gmsk_transmit((U32 *)lastframe_dstar, DSTAR_LASTFRAMEBITSIZE_TX, DSTAR_LASTFRAMEBITSIZE_TX-2);
+  rptr_transmit_eotpattern();
   gmsk_set_reloadfunc(&rptr_stopped);
   rptr_tx_state = RPTRTX_eot;
+  if (RPTR_is_set(RPTR_AMBEDECODEINET))
+    ambe_standby();
 }
 
 
@@ -207,6 +214,8 @@ void rptr_transmit_voicedata(void) {
       RPTR_set(RPTR_TX_EMPTY);			// signalling it
     } // fi empty
   } // esle norm
+  if (RPTR_is_set(RPTR_AMBEDECODEINET))
+    ambe_putvoice(voicedat->voice);
   // replace voice data, currently transmitting with Silence
   // DSTAR_BEFOREFRAMEENDS < 32: All bits we need for the current tx are in gmsk-buffer
   memcpy(voicejusttxed, SilenceFrame, sizeof(tds_voicedata));
@@ -218,24 +227,34 @@ void rptr_transmit_voicedata(void) {
 
 
 void rptr_transmit_header(void) {
-  gmsk_transmit((U32 *)&DStar_HeaderBS, DSTAR_HEADEROUTBITSIZE, DSTAR_HEADEROUTBITSIZE-DSTAR_BEFOREFRAMEENDS);
+  gmsk_transmit(DStar_HeaderBS, DSTAR_HEADEROUTBITSIZE, DSTAR_HEADEROUTBITSIZE-DSTAR_BEFOREFRAMEENDS);
   RPTR_TxFrameCount = 0;
   TxVoice_RdPos     = 0;
   gmsk_set_reloadfunc(rptr_transmit_voicedata);
   rptr_tx_state = RPTRTX_header;
+  if (RPTR_is_set(RPTR_AMBEDECODEINET))
+    ambe_decode();
 }
 
 
+__inline void rptr_transmit_shortpreamble(void) {
+  gmsk_transmit(&preamble_dstar[3], 32+15, 1);
+}
+
 void rptr_restart_header(void) {
-  gmsk_transmit((U32 *)&preamble_dstar[3], 32+15, 1);
+  rptr_transmit_shortpreamble();
   gmsk_set_reloadfunc(rptr_transmit_header);		// unmittelbar Header hinter
   rptr_tx_state = RPTRTX_preamble;
 }
 
 
+__inline void rptr_transmit_brkeot(void) {
+  gmsk_transmit(lastframe_dstar, DSTAR_LASTFRAMEBITSIZE, 1);
+}
+
 void rptr_begin_new_tx(void) {
+  rptr_transmit_brkeot();
   gmsk_set_reloadfunc(rptr_restart_header);
-  gmsk_transmit((U32 *)lastframe_dstar, DSTAR_LASTFRAMEBITSIZE, 1);
   rptr_clear_tx_buffer();
 }
 
@@ -252,7 +271,7 @@ void rptr_break_current(void) {
 
 void rptr_preamble(void) {
   if (TxVoice_RdPos < (3*RPTR_PREAMBLE_TO)) {	// max 420ms before shutdown
-    gmsk_transmit((U32 *)preamble_dstar, 32, 16);
+    gmsk_transmit(preamble_dstar, 32, 16);
     TxVoice_RdPos++;
     rptr_tx_state = RPTRTX_preamble;
   } else {
@@ -266,7 +285,7 @@ void rptr_transmit_start(void) {
   if (TxVoice_RdPos > 4)
     TxVoice_RdPos = 4;
   // transmitting a minimum of 128bits preamble plus START pattern (15bits)
-  gmsk_transmit((U32 *)&preamble_dstar[TxVoice_RdPos], DSTAR_PREAMPLELEN-(TxVoice_RdPos*32), 1);
+  gmsk_transmit(&preamble_dstar[TxVoice_RdPos], DSTAR_PREAMPLELEN-(TxVoice_RdPos*32), 1);
   rptr_tx_state = RPTRTX_preamble;
 }
 
@@ -304,6 +323,8 @@ void rptr_receivedframe(void) {
     RPTR_clear(RPTR_RECEIVING|RPTR_RX_PREAMBLE);
     RPTR_set(RPTR_RX_LOST);
     LED_Clear(LED_GREEN);
+    if (RPTR_is_set(RPTR_AMBEDECODEHF))
+      ambe_standby();
   } else {				// fi valid data
     index = (RPTR_RxFrameCount+1) % VoiceRxBufSize;	// position of next frame
     gmsk_set_receivebuf(DStar_RxVoice[index].packet, DSTAR_FRAMEBITSIZE);
@@ -318,6 +339,8 @@ void rptr_receivedframe(void) {
       DStar_LostSyncCounter++;
     }
   } // fi must be a frame-sync
+  if (RPTR_is_set(RPTR_AMBEDECODEHF))
+    ambe_putvoice(DStar_RxVoice[RPTR_RxFrameCount % VoiceRxBufSize].voice);
   RPTR_RxFrameCount++;					// increase counter
 }
 
@@ -350,6 +373,8 @@ void rptr_startrx_now(void) {
   RPTR_set(RPTR_RECEIVING|RPTR_RX_START);	// a new transmission starts
   LED_Set(LED_GREEN);
   DBG_PREABLE_STOP();
+  if (RPTR_is_set(RPTR_AMBEDECODEHF))
+    ambe_decode();
 }
 
 
@@ -366,6 +391,8 @@ void rptr_syncrx_now(void) {
   RPTR_set(RPTR_RECEIVING|RPTR_RX_FRAMESYNC);
   LED_Set(LED_GREEN);
   DBG_PREABLE_STOP();
+  if (RPTR_is_set(RPTR_AMBEDECODEHF))
+    ambe_decode();
 }
 
 
@@ -440,6 +467,8 @@ int rptr_whilereceivepattern(unsigned int pattern, unsigned int bitcounter) {
       gmsk_set_patternfunc(rptr_waitpattern_START);
       RPTR_set(RPTR_RX_STOP);
       LED_Clear(LED_GREEN);
+      if (RPTR_is_set(RPTR_AMBEDECODEHF))
+        ambe_standby();
       return -1;	// a VALID STOP receives on BITCOUNTER Pos 24. Stop Receiving
     }
     break;
@@ -479,6 +508,13 @@ void rptr_init_data(void) {
   rptr_update_header();
   RPTR_Flags = 0;
   rptr_clear_tx_buffer();
+  /*
+  if (ambe_mode > AMBE_noboard) {
+    // Test:
+    //RPTR_set(RPTR_AMBEDECODEHF);
+    ambe_mode = AMBE_HFonly;
+  }
+  */
 }
 
 
@@ -493,30 +529,6 @@ void rptr_init_hardware(void) {
 
 void rptr_exit_hardware(void) {
   gmsk_exit();
-}
-
-
-
-void rptr_routeflags(void) {
-  char *rr1 = DSTAR_HEADER.RPT1Call;
-  int cnt, filled;
-  filled = memcmp(rr1, "DIRECT", 6);		// no "DIRECT" text is in RPT1 -> use PTR
-  if (filled!=0) {
-    filled = 0;
-    for (cnt=0; cnt<8; cnt++) {			// test for valid ASCII-Chars
-      if ((*rr1 > 0x20) && (*rr1 < 0x80)) {	// if some text found, use PTR
-	filled++;
-	break;
-      }
-      rr1++;
-    }
-  }
-  if (filled)
-    DSTAR_HEADER.flags[0] |= FLAG0_USERPT_MASK;
-  else {
-    DSTAR_HEADER.flags[0] &= ~FLAG0_USERPT_MASK;
-    memcpy(DSTAR_HEADER.RPT2Call, "DIRECT  DIRECT  ", 16);
-  }
 }
 
 
@@ -570,7 +582,7 @@ void rptr_transmit_preamble(void) {
     trx_transmit();
     TxVoice_RdPos = 0;				// counts timeout of preamble loop
     gmsk_set_reloadfunc(rptr_preamble);		// transmit preamble, until rptr_transmit() or timeout
-    gmsk_transmit((U32 *)preamble_dstar, 32, 1);
+    gmsk_transmit(preamble_dstar, 32, 1);
     RPTR_Flags |= RPTR_TRANSMITTING;
     LED_Set(LED_RED);
     rptr_tx_state = RPTRTX_txdelay;
@@ -593,8 +605,8 @@ void rptr_transmit(void) {
   } else {
     enable_ptt();
     trx_transmit();
-    gmsk_set_reloadfunc(rptr_transmit_header);	// after TXed peamble + START-pattern, load header
-    gmsk_transmit((U32 *)preamble_dstar, DSTAR_PREAMPLELEN, 1);
+    gmsk_set_reloadfunc(rptr_transmit_header);	// after TXed preamble + START-pattern, load header
+    rptr_transmit_fullpreamble();
     RPTR_Flags |= RPTR_TRANSMITTING;
     LED_Set(LED_RED);
     rptr_tx_state = RPTRTX_preamble;
