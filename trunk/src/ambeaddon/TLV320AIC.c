@@ -107,6 +107,8 @@
 #define TLV_REG_MIC_M_TERM	0x0131	// DeltaSigma MonoADC Ch Fine-Gain InputSel for M-Terminal
 #define TLV_REG_MIC_INPUTS	0x0132	// Input CM Settings
 
+// Page 4 ADC Digital Filters
+#define TLV_REG_DFC_BASE	0x0400
 
 #define TLV_SOFTRESET_WAIT	(MASTERCLOCK/10000*20)	// 2.0ms (Minimum 1ms)
 
@@ -234,6 +236,15 @@ void tlv_tickwait(U32 ticks_to_wait) {
   } // elihw
 }
 
+
+
+void tlv_twiwait(void) {
+  int maxw;
+  for (maxw=5000; (maxw>0)&&(twi_busy()); maxw--) {
+    SLEEP();
+    watchdog();
+  }
+}
 
 
 void tlv_mute_both(void) {
@@ -372,6 +383,9 @@ int tlv_init(void) {
   CONFIG_C5.agc_maxgain = 119;
   CONFIG_C5.drc_ctrl1   = 0x6F;
   CONFIG_C5.drc_ctrl2   = 0x38;
+
+  tlvfilter_default_lowpass();			// apply a 240Hz lowpass by default
+
   return true;
 }
 
@@ -491,3 +505,63 @@ void cfg_write_c5(const char *config_data) {
   tlv_writereg(TLV_REG_DRC_CTRL3, CONFIG_C5.drc_ctrl3);
 }
 
+
+
+/*! \name TLV320AIC Filter Section
+ */
+//! @{
+
+// all filters calculated with "TIBQ"
+
+static const S16 FirstOrderIIR_240Hz[3] = {	// format N0,N1,D1
+  0x7D0C,
+  0x82F4,
+  0x7A1A
+};
+
+#define DEFAULT_LP_IIR		FirstOrderIIR_240Hz
+
+
+
+/* 1s order IIR: this is the last filter-block (after digital volume control)
+ * active in every filter-selection
+ */
+void tlvfilter_load_iir(const S16 *coeffs) {
+  tlv_twiwait();
+  tlv_writereg(TLV_REG_DFC_BASE+ 8, MSB(coeffs[0]));
+  tlv_writereg(TLV_REG_DFC_BASE+ 9, LSB(coeffs[0]));
+  tlv_writereg(TLV_REG_DFC_BASE+10, MSB(coeffs[1]));
+  tlv_writereg(TLV_REG_DFC_BASE+11, LSB(coeffs[1]));
+  tlv_writereg(TLV_REG_DFC_BASE+12, MSB(coeffs[2]));
+  tlv_writereg(TLV_REG_DFC_BASE+13, LSB(coeffs[2]));
+}
+
+
+void tlvfilter_default_lowpass(void) {
+  tlvfilter_load_iir(DEFAULT_LP_IIR);
+}
+
+
+
+/* all five biquad filter-blocks used on filter selection PRB_R5 (1)
+ * the same function loads 25 FIR coefficients if filter selection PRB_R6 (2)
+ */
+void tlvfilter_load_bqfir(int nr, const S16 *coeffs) {
+  U16 BiquadRegStart;
+  if (nr > 4) return; // only Biquad A,B,C,D,E possible
+  BiquadRegStart = TLV_REG_DFC_BASE + 14 + (nr * 10);
+  tlv_twiwait();
+  tlv_writereg(BiquadRegStart  , MSB(coeffs[0]));	// N0
+  tlv_writereg(BiquadRegStart+1, LSB(coeffs[0]));
+  tlv_writereg(BiquadRegStart+2, MSB(coeffs[1]));	// N1
+  tlv_writereg(BiquadRegStart+3, LSB(coeffs[1]));
+  tlv_writereg(BiquadRegStart+4, MSB(coeffs[2]));	// N2
+  tlv_writereg(BiquadRegStart+5, LSB(coeffs[2]));
+  tlv_writereg(BiquadRegStart+6, MSB(coeffs[3]));	// D1
+  tlv_writereg(BiquadRegStart+7, LSB(coeffs[3]));
+  tlv_writereg(BiquadRegStart+8, MSB(coeffs[4]));	// D2
+  tlv_writereg(BiquadRegStart+9, LSB(coeffs[4]));
+}
+
+
+//! @}

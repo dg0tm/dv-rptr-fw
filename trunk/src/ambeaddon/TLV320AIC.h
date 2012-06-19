@@ -77,5 +77,24 @@ char *	cfg_read_c5(char *config_buffer);
 void	cfg_write_c4(const char *config_data);
 void	cfg_write_c5(const char *config_data);
 
+// Filter functions:
+
+void	tlvfilter_default_lowpass(void);
+
+/* 1s order IIR: this is the last filter-block (after digital volume control)
+ * active in every filter-selection
+ * Parameters: coeffs: array with 3 coeffizies N0,N1,D1
+ */
+void	tlvfilter_load_iir(const signed short *coeffs);
+
+
+/* all five biquad filter-blocks used on filter selection PRB_R5 (1)
+ * the same function loads 25 FIR coefficients if filter selection PRB_R6 (2)
+ * Parameters: nr = 0..4 (A..E), coeffs: array with 5 coeffizies N0,N1,N2,D1,D2
+ */
+void	tlvfilter_load_bqfir(int nr, const signed short *coeffs);
+
+
+
 
 #endif // TLV320AIC_H_
