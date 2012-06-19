@@ -30,9 +30,8 @@
  * 2011-12-15  JA  BugFix: TXCOMP-INT-enabeling must be after transfer-start
  * 2012-01-28  JA  BugFix: EEread-NAK generates no NAK-Int-Request
  * 2012-01-29  JA  reg_read() implemented
+ * 2012-06-19  JA  reset STATUS register (clears NAK of previous reads)
  *
- * ToDo / Bugs:
- * Various bugs bring dvfw to hang (display / wait non-installed EEProm!!!
  */
 
 
@@ -78,12 +77,22 @@ Bool	twi_running;			// used to pause i/o
 Bool	twi_idle;			// true, if no job processed
 U8	twi_jobrecursion;
 
+
+__inline void twi_reset(void) {
+  TWIIO.cr   = AVR32_TWI_SWRST_MASK;
+  TWIIO.cwgr = (TWICKDIV << AVR32_TWI_CWGR_CKDIV_OFFSET)|	\
+    (TWICHDIV << AVR32_TWI_CWGR_CHDIV_OFFSET)|
+    (TWICLDIV << AVR32_TWI_CWGR_CLDIV_OFFSET);
+}
+
+
 void twi_startpdca(const ttwijob *job) {
   TWI_PDAC.mar = (U32)job->buffer;
   TWI_PDAC.tcr = job->len;
   TWIIO.cr     = AVR32_TWI_MSEN_MASK;
   TWI_PDAC.cr  = AVR32_PDCA_TEN_MASK;
   // TXCOMP set to low with the beginning of the transfer...
+  TWIIO.sr;	// reset STATUS register (clears NAK of previous reads)
   TWIIO.ier    = AVR32_TWI_IER_NACK_MASK|AVR32_TWI_IER_TXCOMP_MASK;
 }
 
@@ -100,6 +109,7 @@ __inline void twi_startmultipleread(const ttwijob *job) {
 
 
 void twi_process_job(void) {
+  TWIIO.idr = AVR32_TWI_IDR_TXCOMP_MASK|AVR32_TWI_IDR_NACK_MASK; // Disable INTs
   if (twi_running && (TWIrjob != TWIcjob)) {		// next job?
     ttwijob *actjob;
     twi_idle   = false;
@@ -148,7 +158,6 @@ void twi_process_job(void) {
       return;
     } // hctiws cmd
   }  // fi next
-  TWIIO.idr = AVR32_TWI_IDR_TXCOMP_MASK|AVR32_TWI_IDR_NACK_MASK;	// Disable
   twi_idle  = true;
 }
 
@@ -166,7 +175,7 @@ INTERRUPT_FUNC twi_interrupt(void) {
   U32 twisr   = TWIIO.sr;
   U32 leftb   = TWI_PDAC.tcr;			// Bytes transfered from PDCA
   TWIIO.cr    = AVR32_TWI_MSDIS_MASK;		// TWI stop
-  TWI_PDAC.cr = AVR32_PDCA_ECLR_MASK|AVR32_PDCA_TDIS_MASK;	// TWI-PDCA stop
+  TWI_PDAC.cr = AVR32_PDCA_TDIS_MASK|AVR32_PDCA_ECLR_MASK; // TWI-PDCA stop
   twi_idle    = false;				// ever false while handling CallBack!
   // handle callback of curr job
   currjob = &TWIjobs[TWIrjob&TWIQueueMask];	// pointer to current job
@@ -174,6 +183,10 @@ INTERRUPT_FUNC twi_interrupt(void) {
   if (currjob->func != NULL) {
     if (twisr&AVR32_TWI_SR_NACK_MASK) {
       TWI_PDAC.idr = AVR32_PDCA_IDR_TRC_MASK;	// stop PDAC (prev. reading mode)
+      // Resetting TWI is not the best solution, but I don't find
+      // a way to get a clen NAK for the next job.
+      // In the case of no RESET a 2nd I²C Adress-Byte-Burst appears
+      twi_reset();
       /*U32 txed_data = currjob->len - leftb - 1;
       if ((currjob->cmd == TWIwrite)||(currjob->cmd == EEwrite)) {
 	if ((twisr&AVR32_TWI_SR_TXRDY_MASK)==0) txed_data--;
@@ -207,10 +220,7 @@ void twi_exit(void) {
 void twi_init(void) {
   // ToDo: pm_enable_TWI()...
   TWIIO.idr  = 0xFFFF;
-  TWIIO.cr   = AVR32_TWI_SWRST_MASK|AVR32_TWI_SVDIS_MASK;
-  TWIIO.cwgr = (TWICKDIV << AVR32_TWI_CWGR_CKDIV_OFFSET)|	\
-    (TWICHDIV << AVR32_TWI_CWGR_CHDIV_OFFSET)|
-    (TWICLDIV << AVR32_TWI_CWGR_CLDIV_OFFSET);
+  twi_reset();
 
   TWI_PDAC.idr = 0x0FFF;
   TWI_PDAC.cr  = AVR32_PDCA_ECLR_MASK|AVR32_PDCA_TDIS_MASK;

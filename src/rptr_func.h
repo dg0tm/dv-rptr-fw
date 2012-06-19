@@ -47,14 +47,14 @@ typedef enum {
 
 extern unsigned int RPTR_Flags;
 // Receive Flags (checked in handle_hfdata()) Bit 0..8
-#define RPTR_RX_START		0x01
-#define RPTR_RX_STOP		0x02
-#define RPTR_RX_LOST		0x04
-#define RPTR_RX_FRAMESYNC	0x08	// first detection of a preamble pattern
-#define RPTR_RX_FRAME		0x10
-#define RPTR_RX_HEADER		0x20
-#define RPTR_RX_PREAMBLE	0x40	// permanent indicator, don't clear flag
-#define RPTR_RECEIVING		0x80	// permanent indicator, don't clear flag
+#define RPTR_RX_START		0x0001
+#define RPTR_RX_STOP		0x0002
+#define RPTR_RX_LOST		0x0004
+#define RPTR_RX_FRAMESYNC	0x0008	// first detection of a preamble pattern
+#define RPTR_RX_FRAME		0x0010
+#define RPTR_RX_HEADER		0x0020
+#define RPTR_RX_PREAMBLE	0x0040	// permanent indicator, don't clear flag
+#define RPTR_RECEIVING		0x0080	// permanent indicator, don't clear flag
 
 #define RPTR_RX_1STPREAMBLE	0x0100	// first preamble detected
 

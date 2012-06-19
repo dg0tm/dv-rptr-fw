@@ -85,10 +85,12 @@
  * 2012-04-25 V1.61  EEProm Config Routines
  * 2012-05-16 V1.61a EEProm Config Save Function
  * 2012-05-18 V1.62  Simple Buffer-based Save2EEprom
- * 2012-05-22 V1.63  Autocorrection (Replace RPT1/2 by repeater ACK burst)
+ * 2012-05-22 V1.63  Autocorrection RX (Replace RPT1/2 by repeater ACK burst)
  * 2012-05-24	     new TINYpacket for async answers
+ * 2012-06-18 V1.63c Dongle-Mode: Own-Header transmitted later to PC
  *
  * ToDo:
+ * - configurable Half-Duplex Mode (switch off RX-Timer while TX against feedbacks)
  * - 2nd ACK/NAK message on "Save2EEprom" job is done
  *   need a dynamic job polling (eeprom_status)
  * - USB not working after reset cmd, maybe a USB-unplug msg is needed
@@ -205,11 +207,9 @@ int main(void) {
   init_modemdata();			// Initialisation of persitent Pkts (Header, Voice)
 
   Enable_global_interrupt();		// Enable all interrupts.
-  LEDs_Off();
 
   trx_capabilities = trx_init();	// init optional TRX module
   dgl_capabilities = dgl_init();	// Test for a AMBE addon board and initialize it...
-
 
   cfg_apply_c0();			// setup default config (if none from eeprom)
   // *** loading permanent stored config data ***
@@ -221,6 +221,7 @@ int main(void) {
   idle_timer_start();			// keep µC alive to handle external WD, if
   // no other activity (USB)
 
+  LEDs_Off();
 
   while (TRUE) {			// *** Main-Loop ***
 

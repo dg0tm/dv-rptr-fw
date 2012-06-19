@@ -22,6 +22,7 @@
  * Report:
  * 2012-04-25	Add "55 55 55" as Slowdata in the last voice packet (compatibility)
  * 2012-05-22	Autocorrection RPT1/2 works now
+ * 2012-06-18	DGL_HEADER appears now when first voice packet ready (better timing)
  */
 
 
@@ -155,7 +156,7 @@ void dgl_transmit_firstvoice(void) {
     gmsk_set_reloadfunc(dgl_transmit_voicedata);
     rptr_tx_state = RPTRTX_voicedata;
     dgl_FrameCount = 1;
-    RPTR_set(DGL_FRAME);
+    RPTR_set(DGL_HEADER|DGL_FRAME);
     if (dgl_micptt_triggered) {
       dgl_function = dgl_activemicptt;	// enable check-mic-ptt for release
     }
@@ -166,7 +167,6 @@ void dgl_transmit_firstvoice(void) {
 void dgl_transmit_header(void) {
   gmsk_transmit(dgl_HeaderBS, DSTAR_HEADEROUTBITSIZE, DSTAR_HEADEROUTBITSIZE-DSTAR_BEFOREFRAMEENDS);
   gmsk_set_reloadfunc(&dgl_transmit_firstvoice);
-  RPTR_set(DGL_HEADER);
   rptr_tx_state = RPTRTX_header;
   ambe_getsilence(dgl_voice.voice);
   dgl_FrameCount = 0;
@@ -377,7 +377,7 @@ void dgl_ProcessHdr(const tds_header *RxHeader) {
 	  ambe_double_tone(AMBE_ERRTONE, 6, 6, AMBE_ERRTONE);
 	} else
 	  ambe_set_dtmf(AMBE_ACKTONE, 10);
-      } // fi von RPT1
+      } // fi von RPT2
     } // fi
   }
 }

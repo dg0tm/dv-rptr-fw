@@ -21,6 +21,9 @@
  *
  * Report:
  * 2012-05-22	created (copied from rptr_main.c)
+ * 2012-06-18	change sequence of FLAG handling in handle_hfdata()
+ * 		(DGL_HEADER and DGL_FRAME appears simoutanously)
+ *
  */
 
 
@@ -237,6 +240,9 @@ void update_status(void) {
 #define SFC_DGL_MANUALPTT	0x40	// set manual PTT on or off
 #define SFC_DGL_VOLUMECTRL	0x41	// controls volume (selector + value 8bit)
 
+#define SFC_DGL_ADCFILTER	0x44	// Load a FilterBlock
+
+
 #define SFC_DEFAULT_CONFIGS	0x80	// load all stored configs from EEProm
 #define SFC_STORE_CONFIG	0x81	// write a configuration from ram into EEProm
 
@@ -334,6 +340,32 @@ void handle_special_func_cmd(int len) {
       } // hctiws selection
       if (answer.head.len == 0) pc_send_byte(ACK);
     } else pc_send_byte(NAK);
+    break;
+  case SFC_DGL_ADCFILTER:	// loads a FilterBlock into TLV320AIC
+    if ((dgl_capabilities) && (len>=9)) {
+      switch (rxdatapacket.data[PKT_PARAM_IDX+1]) {
+      case 0:		// FirstOrder IIR
+	if (len != 9)
+	  pc_send_byte(NAK);
+	else
+	  tlvfilter_load_iir((const S16 *)&rxdatapacket.data[PKT_PARAM_IDX+2]);
+	break;
+      case 1:	// BiQuad A or FIR coeffs Fir0 to Fir4
+      case 2:	// BiQuad B or FIR coeffs Fir5 to Fir9
+      case 3:	// BiQuad C or FIR coeffs Fir10 to Fir14
+      case 4:	// BiQuad D or FIR coeffs Fir15 to Fir19
+      case 5:	// BiQuad E or FIR coeffs Fir20 to Fir24
+	if (len != 13)
+	  pc_send_byte(NAK);
+	else
+	  tlvfilter_load_bqfir(rxdatapacket.data[PKT_PARAM_IDX+1]-1,
+	    (const S16 *)&rxdatapacket.data[PKT_PARAM_IDX+2]);
+	break;
+      default:
+	pc_send_byte(NAK);
+	break;
+      } // hctiws kind/no of filter
+    }
     break;
   case SFC_DEFAULT_CONFIGS:
     if (have_configs()) {
@@ -644,43 +676,13 @@ void handle_pcdata(void) {
 void handle_hfdata(void) {
   static bool transmission = false;
   if (RPTR_is_set(RPTR_INDICATOR_MASK)) {
+
     if (RPTR_is_set(RPTR_RX_1STPREAMBLE)) {
       RPTR_clear(RPTR_RX_1STPREAMBLE);
       ctrldata.head.cmd = RPTR_RXPREAMBLE;
       append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
       data_transmit((char *)&ctrldata, sizeof(ctrldata));
-    }
-    if (RPTR_is_set(RPTR_RX_FRAMESYNC)) {
-      RPTR_clear(RPTR_RX_FRAMESYNC);
-      if (!transmission) {
-        ctrldata.head.cmd = RPTR_RXSYNC;
-        ctrldata.rxid++;
-        headerdata.rxid = ctrldata.rxid;
-        voicedata.rxid  = ctrldata.rxid;
-        append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
-        data_transmit((char *)&ctrldata, sizeof(ctrldata));
-        transmission = true;
-      }
-    }
-
-    if (RPTR_is_set(RPTR_RX_FRAME)) {
-      RPTR_clear(RPTR_RX_FRAME);
-      voicedata.pktcount = rptr_copycurrentrxvoice(&voicedata.DVdata);
-      voicedata.rssi     = swap16(gmsk_get_rssi_avrge());
-      voicedata.srcflags &= ~0x01;
-      append_crc_ccitt((char *)&voicedata, sizeof(voicedata));
-      data_transmit((char *)&voicedata, sizeof(voicedata));
-    } // fi voice data
-    if (RPTR_is_set(DGL_FRAME)) {
-      RPTR_clear(DGL_FRAME);
-      if ((status_control&STA_NOCONFIG_MASK)==0) {
-	voicedata.pktcount = dgl_copyvoice(&voicedata.DVdata);
-	voicedata.rssi     = 0;
-	voicedata.srcflags |= 0x01;
-	append_crc_ccitt((char *)&voicedata, sizeof(voicedata));
-	data_transmit((char *)&voicedata, sizeof(voicedata));
-      }
-    } // fi dongle voice data
+    } // fi preamble 01010... detected
 
     if (RPTR_is_set(RPTR_RX_START)) {
       RPTR_clear(RPTR_RX_START);
@@ -693,26 +695,34 @@ void handle_hfdata(void) {
       transmission = true;
     } // fi start detected
 
-    if (RPTR_is_set(RPTR_RX_STOP|DGL_EOT)) {
-      RPTR_clear(RPTR_RX_STOP|DGL_EOT);
-      if ((status_control&STA_NOCONFIG_MASK)==0) {
-	ctrldata.head.cmd = RPTR_EOT;
-	ctrldata.rsvd     = voicedata.pktcount;
-	append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
-	data_transmit((char *)&ctrldata, sizeof(ctrldata));
-	transmission = false;
+    if (RPTR_is_set(RPTR_RX_FRAMESYNC)) {
+      RPTR_clear(RPTR_RX_FRAMESYNC);
+      if (!transmission) {
+        ctrldata.head.cmd = RPTR_RXSYNC;
+        ctrldata.rxid++;
+        headerdata.rxid = ctrldata.rxid;
+        voicedata.rxid  = ctrldata.rxid;
+        append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
+        data_transmit((char *)&ctrldata, sizeof(ctrldata));
+        transmission = true;
       }
-    } // fi EOT detected
+    } // fi framesync-start
 
-    if (RPTR_is_set(RPTR_RX_LOST)) {
-      RPTR_clear(RPTR_RX_LOST);
-      ctrldata.head.cmd = RPTR_RXLOST;
-      ctrldata.rsvd     = voicedata.pktcount;
-      append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
-      data_transmit((char *)&ctrldata, sizeof(ctrldata));
-      transmission = false;
-    } // fi start detected
-    if (RPTR_is_set(RPTR_RX_HEADER)) {
+    // *** HEADER received ***
+    if (RPTR_is_set(DGL_HEADER)) {
+      RPTR_clear(DGL_HEADER);
+      if ((status_control&STA_NOCONFIG_MASK)==0) {
+	ctrldata.rxid++;
+	headerdata.rxid = ctrldata.rxid;
+	voicedata.rxid  = ctrldata.rxid;
+	transmission    = true;
+	headerdata.biterrs = 0;
+	headerdata.srcflags |= 0x01;
+	dgl_get_header(&headerdata.header);
+	append_crc_ccitt((char *)&headerdata, sizeof(headerdata));
+	data_transmit((char *)&headerdata, sizeof(headerdata));
+      }
+    } else if (RPTR_is_set(RPTR_RX_HEADER)) {	// fi DONGLE starts with header
       RPTR_clear(RPTR_RX_HEADER);
       if (!transmission) {
         ctrldata.rxid++;
@@ -734,20 +744,47 @@ void handle_hfdata(void) {
       append_crc_ccitt((char *)&headerdata, sizeof(headerdata));
       data_transmit((char *)&headerdata, sizeof(headerdata));
     } // fi header received
-    if (RPTR_is_set(DGL_HEADER)) {
-      RPTR_clear(DGL_HEADER);
+
+
+    // *** VOICEFRAME received or generated by AMBE-2020 ***
+    if (RPTR_is_set(DGL_FRAME)) {
+      RPTR_clear(DGL_FRAME);
       if ((status_control&STA_NOCONFIG_MASK)==0) {
-	ctrldata.rxid++;
-	headerdata.rxid = ctrldata.rxid;
-	voicedata.rxid  = ctrldata.rxid;
-	transmission    = true;
-	headerdata.biterrs = 0;
-	headerdata.srcflags |= 0x01;
-	dgl_get_header(&headerdata.header);
-	append_crc_ccitt((char *)&headerdata, sizeof(headerdata));
-	data_transmit((char *)&headerdata, sizeof(headerdata));
+	voicedata.pktcount = dgl_copyvoice(&voicedata.DVdata);
+	voicedata.rssi     = 0;
+	voicedata.srcflags |= 0x01;
+	append_crc_ccitt((char *)&voicedata, sizeof(voicedata));
+	data_transmit((char *)&voicedata, sizeof(voicedata));
       }
-    } // fi DONGLE starts with header
+    } else if (RPTR_is_set(RPTR_RX_FRAME)) {	// fi dongle voice data
+      RPTR_clear(RPTR_RX_FRAME);
+      voicedata.pktcount = rptr_copycurrentrxvoice(&voicedata.DVdata);
+      voicedata.rssi     = swap16(gmsk_get_rssi_avrge());
+      voicedata.srcflags &= ~0x01;
+      append_crc_ccitt((char *)&voicedata, sizeof(voicedata));
+      data_transmit((char *)&voicedata, sizeof(voicedata));
+    } // fi voice data
+
+    // *** ENDING HF Stream Flags ***
+    if (RPTR_is_set(RPTR_RX_STOP|DGL_EOT)) {
+      RPTR_clear(RPTR_RX_STOP|DGL_EOT);
+      if ((status_control&STA_NOCONFIG_MASK)==0) {
+      ctrldata.head.cmd = RPTR_EOT;
+      ctrldata.rsvd     = voicedata.pktcount;
+      append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
+      data_transmit((char *)&ctrldata, sizeof(ctrldata));
+      transmission = false;
+      }
+    } // fi EOT detected
+    if (RPTR_is_set(RPTR_RX_LOST)) {
+      RPTR_clear(RPTR_RX_LOST);
+      ctrldata.head.cmd = RPTR_RXLOST;
+      ctrldata.rsvd     = voicedata.pktcount;
+      append_crc_ccitt((char *)&ctrldata, sizeof(ctrldata));
+      data_transmit((char *)&ctrldata, sizeof(ctrldata));
+      transmission = false;
+    } // fi start detected
+
   } // fi do something
   // Testet, ob was emfangen wurde.
   // sendet sofort an pc
