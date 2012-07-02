@@ -41,7 +41,9 @@ typedef struct PACKED_DATA {
 #define C0FLAG_RXINVERS		0x01
 #define C0FLAG_TXINVERS		0x02
 #define C0FLAG_CHAN_B		0x04
+#define C0FLAG_RXAUTOINVERS	0x08
 
+#define C0FLAG_HALFDUPLEX	0x80	// disables RX while TX
 
 
 // physical config (MAIN config C0) read/write & apply functions:
