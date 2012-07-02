@@ -20,6 +20,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this package. If not, see <http://www.gnu.org/licenses/>.
  *
+ * Report:
+ * 2012-06-30	Config C6 added, stores 28x16bit Coeeffs in LittleEndian Format.
  */
 
 #include "TLV320AIC.h"
@@ -522,6 +524,17 @@ static const S16 FirstOrderIIR_240Hz[3] = {	// format N0,N1,D1
 #define DEFAULT_LP_IIR		FirstOrderIIR_240Hz
 
 
+typedef struct PACKED_DATA {
+  S16	FirstOrderIIR[3];
+  S16	BQBlockA[5];
+  S16	BQBlockB[5];
+  S16	BQBlockC[5];
+  S16	BQBlockD[5];
+  S16	BQBlockE[5];
+} tfilter_config;
+
+tfilter_config	CONFIG_C6;
+
 
 /* 1s order IIR: this is the last filter-block (after digital volume control)
  * active in every filter-selection
@@ -538,7 +551,14 @@ void tlvfilter_load_iir(const S16 *coeffs) {
 
 
 void tlvfilter_default_lowpass(void) {
+  memset(&CONFIG_C6, 0, sizeof(CONFIG_C6));
+  memcpy(CONFIG_C6.FirstOrderIIR, DEFAULT_LP_IIR, 3);
   tlvfilter_load_iir(DEFAULT_LP_IIR);
+  CONFIG_C6.BQBlockA[0] = 0x7FFF;	// init value, identical to TLV320 reset-value
+  CONFIG_C6.BQBlockB[0] = 0x7FFF;	// init value, identical to TLV320 reset-value
+  CONFIG_C6.BQBlockC[0] = 0x7FFF;	// init value, identical to TLV320 reset-value
+  CONFIG_C6.BQBlockD[0] = 0x7FFF;	// init value, identical to TLV320 reset-value
+  CONFIG_C6.BQBlockE[0] = 0x7FFF;	// init value, identical to TLV320 reset-value
 }
 
 
@@ -561,6 +581,75 @@ void tlvfilter_load_bqfir(int nr, const S16 *coeffs) {
   tlv_writereg(BiquadRegStart+7, LSB(coeffs[3]));
   tlv_writereg(BiquadRegStart+8, MSB(coeffs[4]));	// D2
   tlv_writereg(BiquadRegStart+9, LSB(coeffs[4]));
+}
+
+
+
+char *cfg_read_c6(char *config_buffer) {
+  int i;
+  *config_buffer++ = 0xC6;			// identifier byte
+  *config_buffer++ = CONFIG_C6_SIZE;		// length
+
+  for (i=0; i<3; i++) {
+    *config_buffer++ = LSB(CONFIG_C6.FirstOrderIIR[i]);
+    *config_buffer++ = MSB(CONFIG_C6.FirstOrderIIR[i]);
+  }
+  for (i=0; i<5; i++) {
+    *config_buffer++ = LSB(CONFIG_C6.BQBlockA[i]);
+    *config_buffer++ = MSB(CONFIG_C6.BQBlockA[i]);
+  }
+  for (i=0; i<5; i++) {
+    *config_buffer++ = LSB(CONFIG_C6.BQBlockB[i]);
+    *config_buffer++ = MSB(CONFIG_C6.BQBlockB[i]);
+  }
+  for (i=0; i<5; i++) {
+    *config_buffer++ = LSB(CONFIG_C6.BQBlockC[i]);
+    *config_buffer++ = MSB(CONFIG_C6.BQBlockC[i]);
+  }
+  for (i=0; i<5; i++) {
+    *config_buffer++ = LSB(CONFIG_C6.BQBlockD[i]);
+    *config_buffer++ = MSB(CONFIG_C6.BQBlockD[i]);
+  }
+  for (i=0; i<5; i++) {
+    *config_buffer++ = LSB(CONFIG_C6.BQBlockE[i]);
+    *config_buffer++ = MSB(CONFIG_C6.BQBlockE[i]);
+  }
+  return config_buffer;
+}
+
+
+void cfg_write_c6(const char *config_data) {
+  int i;
+  for (i=0; i<3; i++) {
+    LSB(CONFIG_C6.FirstOrderIIR[i]) = *config_data++;
+    MSB(CONFIG_C6.FirstOrderIIR[i]) = *config_data++;
+  }
+  tlvfilter_load_iir(CONFIG_C6.FirstOrderIIR);
+  for (i=0; i<5; i++) {
+    LSB(CONFIG_C6.BQBlockA[i]) = *config_data++;
+    MSB(CONFIG_C6.BQBlockA[i]) = *config_data++;
+  }
+  tlvfilter_load_bqfir(0, CONFIG_C6.BQBlockA);
+  for (i=0; i<5; i++) {
+    LSB(CONFIG_C6.BQBlockB[i]) = *config_data++;
+    MSB(CONFIG_C6.BQBlockB[i]) = *config_data++;
+  }
+  tlvfilter_load_bqfir(1, CONFIG_C6.BQBlockB);
+  for (i=0; i<5; i++) {
+    LSB(CONFIG_C6.BQBlockC[i]) = *config_data++;
+    MSB(CONFIG_C6.BQBlockC[i]) = *config_data++;
+  }
+  tlvfilter_load_bqfir(2, CONFIG_C6.BQBlockC);
+  for (i=0; i<5; i++) {
+    LSB(CONFIG_C6.BQBlockD[i]) = *config_data++;
+    MSB(CONFIG_C6.BQBlockD[i]) = *config_data++;
+  }
+  tlvfilter_load_bqfir(3, CONFIG_C6.BQBlockD);
+  for (i=0; i<5; i++) {
+    LSB(CONFIG_C6.BQBlockE[i]) = *config_data++;
+    MSB(CONFIG_C6.BQBlockE[i]) = *config_data++;
+  }
+  tlvfilter_load_bqfir(4, CONFIG_C6.BQBlockE);
 }
 
 

@@ -22,6 +22,7 @@
  * along with this package. If not, see <http://www.gnu.org/licenses/>.
  *
  * Report:
+ * 2012-06-30	Config C6 added
  */
 
 #include "config.h"
@@ -121,6 +122,9 @@ bool config_setup(const char *config_data, int len) {
     case 0XC5:	// AMBE AGC and DRC config 12bytes
       if (block_len==CONFIG_C5_SIZE) cfg_write_c5(config_data+2); else return false;
       break;
+    case 0XC6:	// AMBE NF-Codec Filter-Coeffs (IIR + 5xBQ-Blocks or 1x25tap FIR; 56bytes)
+      if (block_len==CONFIG_C6_SIZE) cfg_write_c6(config_data+2); else return false;
+      break;
     default:
       // ignore other config blocks
       break;
@@ -135,7 +139,7 @@ bool config_setup(const char *config_data, int len) {
 
 
 
-#define HIGHEST_SUPPORTED_CFG	5
+#define HIGHEST_SUPPORTED_CFG	6
 
 void load_configs_from_eeprom(void) {
   char *cfg_buffer;
@@ -178,6 +182,9 @@ bool save_configs(void) {
   append_crc_ccitt(cfg_block, nextblock-cfg_block+2);
   cfg_block = nextblock + 2;
   nextblock = cfg_read_c5(cfg_block);	// AGC+DRC
+  append_crc_ccitt(cfg_block, nextblock-cfg_block+2);
+  cfg_block = nextblock + 2;
+  nextblock = cfg_read_c6(cfg_block);	// NF-Codec Filter
   append_crc_ccitt(cfg_block, nextblock-cfg_block+2);
   cfg_block = nextblock + 2;
   // 2nd save new loaded block (only real length)

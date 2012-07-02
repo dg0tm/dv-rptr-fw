@@ -21,10 +21,16 @@
  * along with this package. If not, see <http://www.gnu.org/licenses/>.
  *
  * original source created by Jonathan Naylor, G4KLX
+ *
+ * Report:
+ * 2012-06-03:	Some strange behavior on char << 16 | char << 8 construkts. replaced.
+ * 2012-06-08:	Fixing 'copy-paste-forget-change' bugs
+ *
  */
 
+
 #include "ambe_fec.h"
-#include "gorlay.h"
+#include "golay.h"
 #include "compiler.h"
 
 #include <string.h>
@@ -503,25 +509,31 @@ static void ambefec_interleave(tambevoicefec result, const tambevoicefec raw_voi
 }
 
 
-// the following function are only compatible with big-endian targets!
-// must be modified for using on a PC.
+// the following functions are endian-independent
 
 void ambefec_regenerate(tambevoicefec voice) {
   tambevoicefec decoded;
-  U32 data, datb;
-  Union32 encoded_dat;
+  U32 data, datb, encoded_dat;
   ambefec_deinterleave(decoded, voice);
-  data       = gorlay_decode24128((decoded[0]<<16) | (decoded[1]<<8) | decoded[2]);
-  encoded_dat.u32 = gorlay_encode24128(data);
-  decoded[0] = encoded_dat.u8[1];
-  decoded[1] = encoded_dat.u8[2];
-  decoded[2] = encoded_dat.u8[3];
-  data       = PRNG_TABLE[data];
-  datb       = gorlay_decode24128(((decoded[3]<<16) | (decoded[4]<<8) | decoded[5])^data);
-  encoded_dat.u32 = gorlay_encode24128(datb)^data;
-  decoded[3] = encoded_dat.u8[1];
-  decoded[4] = encoded_dat.u8[2];
-  decoded[5] = encoded_dat.u8[3];
+  LSB3W(encoded_dat) = 0;
+  LSB2W(encoded_dat) = decoded[0];
+  LSB1W(encoded_dat) = decoded[1];
+  LSB0W(encoded_dat) = decoded[2];
+  data        = gorlay_decode24128(encoded_dat);
+  encoded_dat = gorlay_encode24128(data);
+  decoded[0]  = LSB2W(encoded_dat);
+  decoded[1]  = LSB1W(encoded_dat);
+  decoded[2]  = LSB0W(encoded_dat);
+  LSB3W(encoded_dat) = 0;		// for safety only
+  LSB2W(encoded_dat) = decoded[3];
+  LSB1W(encoded_dat) = decoded[4];
+  LSB0W(encoded_dat) = decoded[5];
+  data        = PRNG_TABLE[data];
+  datb        = gorlay_decode24128(encoded_dat^data);
+  encoded_dat = gorlay_encode24128(datb)^data;
+  decoded[3]  = LSB2W(encoded_dat);
+  decoded[4]  = LSB1W(encoded_dat);
+  decoded[5]  = LSB0W(encoded_dat);
   ambefec_interleave(voice, decoded);
 }
 
@@ -530,37 +542,48 @@ void ambefec_regenerate(tambevoicefec voice) {
 void ambe_removefec(tambevoice result, const tambevoicefec voice) {
   tambevoicefec decoded;
   Union32 data;
-  U32 p_ptr;
+  U32 golay_code, p_ptr;
   ambefec_deinterleave(decoded, voice);
-  data.u16[0] = gorlay_decode24128((decoded[0]<<16) | (decoded[1]<<8) | decoded[2]);
-  p_ptr = PRNG_TABLE[data.u16[0]];
-  data.u16[1] = gorlay_decode24128(((decoded[3]<<16) | (decoded[4]<<8) | decoded[5])^p_ptr);
+  golay_code = 0;
+  LSB2W(golay_code) = decoded[0];
+  LSB1W(golay_code) = decoded[1];
+  LSB0W(golay_code) = decoded[2];
+  data.u16[0]       = gorlay_decode24128(golay_code);
+  p_ptr             = PRNG_TABLE[data.u16[0]];
+  LSB2W(golay_code) = decoded[3];
+  LSB1W(golay_code) = decoded[4];
+  LSB0W(golay_code) = decoded[5];
+  data.u16[1] = gorlay_decode24128(golay_code^p_ptr);
   // packing data:
-  result[0] = data.u8[1];
-  result[1] = data.u8[3];
-  result[2] = (data.u8[0] << 4) | (data.u8[2] & 0x0F);
+  data.u16[1] <<= 4;
+  data.u32    >>= 4;
+  result[0] = LSB2W(data);
+  result[1] = LSB1W(data);
+  result[2] = LSB0W(data);
   memcpy(result+3, decoded+6, 3);
 }
 
 
 void ambe_addfec(tambevoicefec result, const tambevoice voice) {
   tambevoicefec encoded;
-  Union32 data, encoded_dat;
-  U32 p_ptr;
-  // un-packing data:
-  data.u8[1] = voice[0];
-  data.u8[3] = voice[1];
-  data.u8[0] = voice[2] >> 4;
-  data.u8[2] = voice[2] & 0x0F;
+  Union32 data;
+  U32 encoded_dat, p_ptr;
+  data.u32 = 0;			// un-packing data:
+  LSB2W(data) = voice[0];	// only 24bit (of 48) are protected...
+  LSB1W(data) = voice[1];
+  LSB0W(data) = voice[2];
+  data.u32    <<= 4;
+  data.u16[1] >>= 4;
+  // end unpacking
   p_ptr = PRNG_TABLE[data.u16[0]];
-  encoded_dat.u32 = gorlay_encode24128(data.u16[0]);
-  encoded[0] = encoded_dat.u8[1];
-  encoded[1] = encoded_dat.u8[2];
-  encoded[2] = encoded_dat.u8[3];
-  encoded_dat.u32 = gorlay_encode24128(data.u16[1])^p_ptr;
-  encoded[3] = encoded_dat.u8[1];
-  encoded[4] = encoded_dat.u8[2];
-  encoded[5] = encoded_dat.u8[3];
+  encoded_dat = gorlay_encode24128(data.u16[0]);
+  encoded[0] = LSB2W(encoded_dat);
+  encoded[1] = LSB1W(encoded_dat);
+  encoded[2] = LSB0W(encoded_dat);
+  encoded_dat = gorlay_encode24128(data.u16[1])^p_ptr;
+  encoded[3] = LSB2W(encoded_dat);
+  encoded[4] = LSB1W(encoded_dat);
+  encoded[5] = LSB0W(encoded_dat);
   memcpy(encoded+6, voice+3, 3);
   ambefec_interleave(result, encoded);
 }

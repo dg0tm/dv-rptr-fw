@@ -444,6 +444,10 @@ bool config_readout(unsigned char cfg_id) {
     cfg_read_c5(nextblock);
     answer.head.len = CONFIG_C5_SIZE+3;
     break;
+  case 0xC6:
+    cfg_read_c6(nextblock);
+    answer.head.len = CONFIG_C6_SIZE+3;
+    break;
   default:
     return false;
   } // hctiws id

@@ -31,7 +31,8 @@
  */
 
 
-#include "gorlay.h"
+#include "golay.h"
+
 #include "compiler.h"
 
 

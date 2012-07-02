@@ -26,8 +26,9 @@
 #ifndef TLV320AIC_H_
 #define TLV320AIC_H_
 
-#define CONFIG_C4_SIZE		8
-#define CONFIG_C5_SIZE		12
+#define CONFIG_C4_SIZE		8			// NF-Codec Adj
+#define CONFIG_C5_SIZE		12			// NF-Codec AGC and DRC
+#define CONFIG_C6_SIZE		56			// Filter Coeeffs
 
 
 #define PLL_DATA_PIN		(AVR32_PIN_PB02-32)	// High-Active / shared with USART-TxD
@@ -73,9 +74,13 @@ void	tlv_set_HSvolume(signed char vol);
  */
 char *	cfg_read_c4(char *config_buffer);
 char *	cfg_read_c5(char *config_buffer);
+char *	cfg_read_c6(char *config_buffer);
 
 void	cfg_write_c4(const char *config_data);
 void	cfg_write_c5(const char *config_data);
+void	cfg_write_c6(const char *config_data);
+
+
 
 // Filter functions:
 
