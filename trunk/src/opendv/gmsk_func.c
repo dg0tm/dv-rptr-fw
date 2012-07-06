@@ -54,6 +54,7 @@
  * 		use a averaged DC-value (from raw AD-data) to compensate DC-jumps at the
  * 		start of a new transmission (only while unlocked or in sync)
  * 		unlocked state: uses +/- 1/4 bit-length-jumps to shift in phase quickly
+ * 2012-07-03	gmsk_demodulator_toggle_invert(): Quick toggle inversion
  */
 
 
@@ -973,9 +974,23 @@ void gmsk_demodulator_start(void) {
 }
 
 
+void gmsk_demodulator_stop(void) {
+  gmsk_stop_rxtimer();
+  demod_bitphasecnt = 0;
+  gmsk_demod_unlock();
+}
+
+
 void gmsk_demodulator_invert(int invert) {
   demod_neg_level = (invert)?DEMOD_BITSET_MASK:0;
   demod_pos_level = (invert)?0:DEMOD_BITSET_MASK;  // set inverting
+}
+
+
+void gmsk_demodulator_toggle_invert(void) {
+  U32 tmp_demod_level = demod_neg_level;
+  demod_neg_level = demod_pos_level;
+  demod_pos_level = tmp_demod_level;  // set inverting
 }
 
 

@@ -88,9 +88,14 @@
  * 2012-05-22 V1.63  Autocorrection RX (Replace RPT1/2 by repeater ACK burst)
  * 2012-05-24	     new TINYpacket for async answers
  * 2012-06-18 V1.63c Dongle-Mode: Own-Header transmitted later to PC
+ * 2012-07-02 V1.65  Dual-Port-Communication: PCP2 works on serial Port (115k2) too.
+ *                   See 'stdmodem.c' for details.
+ * 2012-07-03 V1.66  New Features "RX auto inverse" and "half-duplex rx"
+ *
  *
  * ToDo:
- * - configurable Half-Duplex Mode (switch off RX-Timer while TX against feedbacks)
+ * - Serial (RS232) port configurable
+ * + configurable Half-Duplex Mode (switch off RX-Timer while TX against feedbacks)
  * - 2nd ACK/NAK message on "Save2EEprom" job is done
  *   need a dynamic job polling (eeprom_status)
  * - USB not working after reset cmd, maybe a USB-unplug msg is needed
@@ -116,6 +121,7 @@
 
 #include "dac_func.h"
 #include "usb_func.h"
+#include "rs232_func.h"
 #include "rptr_func.h"		// realtime-handler part of HF I/O
 
 #include "transceiver.h"
@@ -200,6 +206,7 @@ int main(void) {
   INTC_init_interrupts();		// Initialize interrupt vectors.
   rptr_init_hardware();
   usb_init();				// Enable VBUS-Check
+  rs232_init(115200, no_flow);		// Enable serial port (2nd PCP2 in the moment)
 
   // *** initializing constant parts of I/O structures ***
 
@@ -212,13 +219,16 @@ int main(void) {
   dgl_capabilities = dgl_init();	// Test for a AMBE addon board and initialize it...
 
   cfg_apply_c0();			// setup default config (if none from eeprom)
+
+  idle_timer_start();			// keep µC alive to handle external WD, if
+  // (start idle_timer before "startup_modeinit()")
+
   // *** loading permanent stored config data ***
   if (load_internal_eeprom()) {
     load_configs_from_eeprom();
     startup_modeinit();			// setup operation mode on powerup
   } // fi
 
-  idle_timer_start();			// keep µC alive to handle external WD, if
   // no other activity (USB)
 
   LEDs_Off();

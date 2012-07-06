@@ -24,7 +24,7 @@
 #ifndef RDA1846_H_
 #define RDA1846_H_
 
-#define RDA_CLOCK	24000000L	// crystal or oscillator frequency
+#define RDA_CLOCK	26000000L	// crystal or oscillator frequency
 
 //#define SUPPORT_2ND_IC
 

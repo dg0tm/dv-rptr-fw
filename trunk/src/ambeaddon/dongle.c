@@ -98,11 +98,7 @@ void dgl_stopped(void) {
   RPTR_clear(RPTR_TRANSMITTING);
   RPTR_set(DGL_EOT);
   LED_Clear(LED_RED);
-#if (DVTX_TIMER_CH==IDLE_TIMER_CH)
-  idle_timer_start();
-#else
   rptr_receive();		// reenable receiving
-#endif
   if (!dgl_micptt_enabled) {	// if disabled, inactivate it
     dgl_function = dgl_inactive;
   }
@@ -259,6 +255,7 @@ void dgl_start_transmit(void) {
       LED_Set(LED_RED);
       ambe_encode();				// Release AMBE2020 reset (enable function)
       rptr_tx_state = RPTRTX_preamble;
+      rptr_disable_receive();			// disable RX...
     } // fi from idle
   } // fi not tx data
 }

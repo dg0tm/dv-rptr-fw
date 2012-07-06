@@ -22,6 +22,7 @@
  *
  * Report:
  * 2012-06-30	Config C6 added, stores 28x16bit Coeeffs in LittleEndian Format.
+ * 2012-07-06	TLV_present bool enabled I²C register write only if HW found on init()
  */
 
 #include "TLV320AIC.h"
@@ -150,8 +151,10 @@ t_config_5 CONFIG_C5;
 
 
 
-volatile U8	TLV_page;	// I�C Page value (set page only, when changes
-volatile tTWIresult TLV_res;
+volatile U8		TLV_page;	// I²C Page value (set page only, when changes
+volatile tTWIresult	TLV_res;
+bool			TLV_present = false;
+
 
 #ifdef AMBE_PROTOTYPE
 
@@ -202,11 +205,13 @@ void init_pll1708(void) {
 
 
 void tlv_writereg(unsigned short reg, unsigned char value) {
-  if (MSB(reg) != TLV_page) {
-    TLV_page = MSB(reg);
-    reg_write(TLV_TWI_ADR, TLV_REG_PAGECTRL, TLV_page, 1, NULL);
-  } // fi change page
-  reg_write(TLV_TWI_ADR, LSB(reg), value, 1, NULL);
+  if (TLV_present) {
+    if (MSB(reg) != TLV_page) {
+      TLV_page = MSB(reg);
+      reg_write(TLV_TWI_ADR, TLV_REG_PAGECTRL, TLV_page, 1, NULL);
+    } // fi change page
+    reg_write(TLV_TWI_ADR, LSB(reg), value, 1, NULL);
+  } // fi fond HW
 }
 
 
@@ -271,7 +276,7 @@ void tlv_unmute_dac(void) {
 /* tlv_set_adcgain()
  * gain in 0.5dB steps (-12dB..20dB ^= -24..40 allowed)
  */
-char tlv_set_adcgain(char gain) {
+char tlv_set_adcgain(signed char gain) {
   if (gain > 40) gain = 40; else if (gain < -24) gain = -24;
   tlv_writereg(TLV_REG_ADCVOLUMEADJ, 0x40 + gain);	// set coarse Gain to value
   return gain;
@@ -326,15 +331,20 @@ void tlv_set_HSvolume(signed char vol) {
 
 
 int tlv_init(void) {
+  TLV_present = false;
 #ifdef AMBE_PROTOTYPE
   init_pll1708();
 #endif
   TLV_res = TWIbusy;
   reg_read(TLV_TWI_ADR, TLV_REG_PAGECTRL, (char *)&TLV_page, 1, tlv_getpage_hnd);
+  // init structures (part 1)
+  memset(&CONFIG_C4, 0, sizeof(CONFIG_C4));
+  memset(&CONFIG_C5, 0, sizeof(CONFIG_C5));
   while (TLV_res == TWIbusy) {
     SLEEP();
   }
   if (TLV_res != TWIok) return false;		// exit, if no response from TLV320AIC (no board)
+  TLV_present = true;
 
   tlv_writereg(TLV_REG_SOFTRESET, 0x01);
   tlv_tickwait(TLV_SOFTRESET_WAIT);		// wait >1ms before TLC is accessible again
@@ -376,9 +386,7 @@ int tlv_init(void) {
   // ADC (Microphone) settings:
   tlv_writereg(TLV_REG_ADCVOLUMEADJ, 0x40);	// set coarse Gain to 0dB (-12..20dB in 0.5dB Steps)
 
-  // init structures
-  memset(&CONFIG_C4, 0, sizeof(CONFIG_C4));
-  memset(&CONFIG_C5, 0, sizeof(CONFIG_C5));
+  // init structures (part 2)
   CONFIG_C4.mic_pga = 0x3F;
   CONFIG_C4.mic_imp = 0x2A;	// BIAS + Impedance
   CONFIG_C4.volume  = 0x7F;	// DAC volume knob-controlled
@@ -412,76 +420,78 @@ char *cfg_read_c5(char *config_buffer) {
 void cfg_write_c4(const char *config_data) {
   U8 mic_m_term, mic_p_term;
   memcpy(&CONFIG_C4, config_data, sizeof(CONFIG_C4));
-  // Apply:
-  if (CONFIG_C4.mic_pga > 119) CONFIG_C4.mic_pga = 119;
-  tlv_writereg(TLV_REG_MICPGA, CONFIG_C4.mic_pga);	// Microphone PGA gain
+  if (TLV_present) {
+    // Apply:
+    if (CONFIG_C4.mic_pga > 119) CONFIG_C4.mic_pga = 119;
+    tlv_writereg(TLV_REG_MICPGA, CONFIG_C4.mic_pga);	// Microphone PGA gain
 
-  // Microphone Impedance + BIAS Value
-  // Bits 0..1 = MicBIAS:
-  // 00 = no BIAS (dynamic microphones)
-  // 01 = 2V
-  // 10 = 2.5V (default)
-  // 11 = 3.3V
-  // all: independent of HeadphoneDET
-  tlv_writereg(TLV_REG_MICBIAS, 0x08 | (CONFIG_C4.mic_imp & 3) );
-  // Bits 2..4 = P-Terminal Impedance
-  switch ((CONFIG_C4.mic_imp>>2) & 0x07) {
-  default:
-  case 0:
-    mic_p_term = 0xC0;	// P-Terminal: MIC1LP with 40kOhm
-    break;
-  case 1:
-    mic_p_term = 0x80;	// P-Terminal: MIC1LP with 20kOhm
-    break;
-  case 2:
-    mic_p_term = 0x40;	// P-Terminal: MIC1LP with 10kOhm
-    break;
-  case 3:
-    mic_p_term = 0xF0;	// P-Terminal: MIC1L+R with 40kOhm
-    break;
-  case 4:
-    mic_p_term = 0xA0;	// P-Terminal: MIC1L+R with 20kOhm
-    break;
-  case 5:
-    mic_p_term = 0x50;	// P-Terminal: MIC1L+R with 10kOhm
-    break;
-  } // hctiws impedance
-  // Bits 5..7 = M-Terminal Impedance
-  switch ((CONFIG_C4.mic_imp>>5)) {
-  default:
-  case 0:
-    mic_m_term = 0x30;	// M-Terminal: MIC1LM with 40kOhm
-    break;
-  case 1:
-    mic_m_term = 0x20;	// M-Terminal: MIC1LM with 20kOhm
-    break;
-  case 2:
-    mic_m_term = 0x10;	// M-Terminal: MIC1LM with 10kOhm
-    break;
-  } // hctiws impedance
+    // Microphone Impedance + BIAS Value
+    // Bits 0..1 = MicBIAS:
+    // 00 = no BIAS (dynamic microphones)
+    // 01 = 2V
+    // 10 = 2.5V (default)
+    // 11 = 3.3V
+    // all: independent of HeadphoneDET
+    tlv_writereg(TLV_REG_MICBIAS, 0x08 | (CONFIG_C4.mic_imp & 3) );
+    // Bits 2..4 = P-Terminal Impedance
+    switch ((CONFIG_C4.mic_imp>>2) & 0x07) {
+    default:
+    case 0:
+      mic_p_term = 0xC0;	// P-Terminal: MIC1LP with 40kOhm
+      break;
+    case 1:
+      mic_p_term = 0x80;	// P-Terminal: MIC1LP with 20kOhm
+      break;
+    case 2:
+      mic_p_term = 0x40;	// P-Terminal: MIC1LP with 10kOhm
+      break;
+    case 3:
+      mic_p_term = 0xF0;	// P-Terminal: MIC1L+R with 40kOhm
+      break;
+    case 4:
+      mic_p_term = 0xA0;	// P-Terminal: MIC1L+R with 20kOhm
+      break;
+    case 5:
+      mic_p_term = 0x50;	// P-Terminal: MIC1L+R with 10kOhm
+      break;
+    } // hctiws impedance
+    // Bits 5..7 = M-Terminal Impedance
+    switch ((CONFIG_C4.mic_imp>>5)) {
+    default:
+    case 0:
+      mic_m_term = 0x30;	// M-Terminal: MIC1LM with 40kOhm
+      break;
+    case 1:
+      mic_m_term = 0x20;	// M-Terminal: MIC1LM with 20kOhm
+      break;
+    case 2:
+      mic_m_term = 0x10;	// M-Terminal: MIC1LM with 10kOhm
+      break;
+    } // hctiws impedance
 
-  tlv_writereg(TLV_REG_MIC_P_TERM, mic_p_term );
-  tlv_writereg(TLV_REG_MIC_M_TERM, mic_m_term );
+    tlv_writereg(TLV_REG_MIC_P_TERM, mic_p_term );
+    tlv_writereg(TLV_REG_MIC_M_TERM, mic_m_term );
 
-  if (CONFIG_C4.hs_out > 18) CONFIG_C4.hs_out = 18;
-  tlv_set_HSvolume(CONFIG_C4.hs_out);
+    if (CONFIG_C4.hs_out > 18) CONFIG_C4.hs_out = 18;
+    tlv_set_HSvolume(CONFIG_C4.hs_out);
 
-  if (CONFIG_C4.spkr_out > 48) CONFIG_C4.spkr_out = 48;
-  tlv_set_SPKRvolume(CONFIG_C4.spkr_out);
+    if (CONFIG_C4.spkr_out > 48) CONFIG_C4.spkr_out = 48;
+    tlv_set_SPKRvolume(CONFIG_C4.spkr_out);
 
-  // page0 access
-  CONFIG_C4.adc_gain = tlv_set_adcgain(CONFIG_C4.adc_gain);
+    // page0 access
+    CONFIG_C4.adc_gain = tlv_set_adcgain(CONFIG_C4.adc_gain);
 
-  if ((CONFIG_C4.volume != 0x7F) && (CONFIG_C4.volume > 48))
-    CONFIG_C4.volume = 48; // max. +24dB
+    if ((CONFIG_C4.volume != 0x7F) && (CONFIG_C4.volume > 48))
+      CONFIG_C4.volume = 48; // max. +24dB
 
-  tlv_set_DACvolume(CONFIG_C4.volume);
+    tlv_set_DACvolume(CONFIG_C4.volume);
 
-  if (CONFIG_C4.adc_filter > 2) CONFIG_C4.adc_filter = 0;
-  tlv_writereg(TLV_REG_ADCPBLOCK, 0x04 + CONFIG_C4.adc_filter);
+    if (CONFIG_C4.adc_filter > 2) CONFIG_C4.adc_filter = 0;
+    tlv_writereg(TLV_REG_ADCPBLOCK, 0x04 + CONFIG_C4.adc_filter);
 
-  if (CONFIG_C4.dac_filter > 2) CONFIG_C4.dac_filter = 0;
-  tlv_writereg(TLV_REG_DACPBLOCK, 0x04 + CONFIG_C4.dac_filter);
+    if (CONFIG_C4.dac_filter > 2) CONFIG_C4.dac_filter = 0;
+    tlv_writereg(TLV_REG_DACPBLOCK, 0x04 + CONFIG_C4.dac_filter);
+  } // fi present
 }
 
 
@@ -495,16 +505,18 @@ void cfg_write_c5(const char *config_data) {
   if (CONFIG_C5.agc_maxgain > 119) CONFIG_C5.agc_maxgain = 119;
   CONFIG_C5.drc_ctrl1 &= 0x7F;	// Dynamic Range Compression
   CONFIG_C5.drc_ctrl2 &= 0x7F;
-  tlv_writereg(TLV_REG_AGC_CTRL1, CONFIG_C5.agc_ctrl1);
-  tlv_writereg(TLV_REG_AGC_CTRL2, CONFIG_C5.agc_ctrl2);
-  tlv_writereg(TLV_REG_AGC_MAXGAIN, CONFIG_C5.agc_maxgain);
-  tlv_writereg(TLV_REG_AGC_ATTACK, CONFIG_C5.agc_attack);
-  tlv_writereg(TLV_REG_AGC_DECAY, CONFIG_C5.agc_decay);
-  tlv_writereg(TLV_REG_AGC_NOISEDEB, CONFIG_C5.agc_noisedeb);
-  tlv_writereg(TLV_REG_AGC_SIGDEB, CONFIG_C5.agc_signaldeb);
-  tlv_writereg(TLV_REG_DRC_CTRL1, CONFIG_C5.drc_ctrl1);
-  tlv_writereg(TLV_REG_DRC_CTRL2, CONFIG_C5.drc_ctrl2);
-  tlv_writereg(TLV_REG_DRC_CTRL3, CONFIG_C5.drc_ctrl3);
+  if (TLV_present) {
+    tlv_writereg(TLV_REG_AGC_CTRL1, CONFIG_C5.agc_ctrl1);
+    tlv_writereg(TLV_REG_AGC_CTRL2, CONFIG_C5.agc_ctrl2);
+    tlv_writereg(TLV_REG_AGC_MAXGAIN, CONFIG_C5.agc_maxgain);
+    tlv_writereg(TLV_REG_AGC_ATTACK, CONFIG_C5.agc_attack);
+    tlv_writereg(TLV_REG_AGC_DECAY, CONFIG_C5.agc_decay);
+    tlv_writereg(TLV_REG_AGC_NOISEDEB, CONFIG_C5.agc_noisedeb);
+    tlv_writereg(TLV_REG_AGC_SIGDEB, CONFIG_C5.agc_signaldeb);
+    tlv_writereg(TLV_REG_DRC_CTRL1, CONFIG_C5.drc_ctrl1);
+    tlv_writereg(TLV_REG_DRC_CTRL2, CONFIG_C5.drc_ctrl2);
+    tlv_writereg(TLV_REG_DRC_CTRL3, CONFIG_C5.drc_ctrl3);
+  } // fi present
 }
 
 

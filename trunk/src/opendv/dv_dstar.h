@@ -57,6 +57,7 @@
 #define DSTAR_PATTERN_MASK	0xFFFFFF00	// 24 bits to match patterns in rx-bitstream
 #define DSTAR_SYNCPREAMBLE	0xAAAAAA00
 #define DSTAR_SYNCSTART		0x0A6EAA00
+#define DSTAR_SYNCSTART_LONG	0x0A6EAAAA
 #define DSTAR_SYNCSTOP		0xF590AA00	// EOT, is inverted START Pattern
 #define DSTAR_FRAMESYNC		0x162D5500	// all >> direction
 
