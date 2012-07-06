@@ -175,11 +175,12 @@ void rptr_stopped(void) {
   trx_receive();
   RPTR_clear(RPTR_TRANSMITTING);
   LED_Clear(LED_RED);
-#if (DVTX_TIMER_CH==IDLE_TIMER_CH)
-  idle_timer_start();
-#endif
+  if (RPTR_is_set(RPTR_HALFDUPLEX)) {
+    rptr_receive();
+  } // fi half-Duplex
   rptr_tx_state = RPTRTX_idle;
 }
+
 
 // rptr_transmit_stopframe() append a END-OF-TRANSMISSION id after voice data (no slowdata)
 // after transmission, rptr_stopped() is called back from gmsk module.
@@ -396,8 +397,19 @@ void rptr_syncrx_now(void) {
 }
 
 
+
 // Handler to Receive Header in Mem-Buffer (DStar_RxHeader)
 int rptr_waitpattern_START(unsigned int pattern, unsigned int bitcounter) {
+
+  // now check "lossy" start condition
+  if ((pattern & 0x0001FFFF) == 0x0000AAAA) {	// oldest Bits in sync state...
+    if ((pattern == DSTAR_SYNCSTART_LONG) ||
+        (count_no_of_1(pattern^DSTAR_SYNCSTART_LONG) < 3)) {
+      rptr_startrx_now();
+      return 1;
+    }
+  } // fi old16 sync
+
   switch (pattern&DSTAR_PATTERN_MASK) {
   case DSTAR_SYNCPREAMBLE:
     if (!RPTR_is_set(RPTR_RX_PREAMBLE)) {
@@ -407,11 +419,11 @@ int rptr_waitpattern_START(unsigned int pattern, unsigned int bitcounter) {
       return 2;			// force sync now
     }
     break;
-  case ((~DSTAR_SYNCPREAMBLE)&0xFFFFFF00):	// inverted preamble pattern - do nothing
+  case ((~DSTAR_SYNCPREAMBLE)&DSTAR_PATTERN_MASK):	// inverted preamble pattern - do nothing
     break;
-  case DSTAR_SYNCSTART:		// A START-PATTERN was found
-    rptr_startrx_now();
-    return 1;			// request sync, restart rxbitcouter
+  //case DSTAR_SYNCSTART:		// A START-PATTERN was found
+  //  rptr_startrx_now();
+  //  return 1;			// request sync, restart rxbitcouter
   case DSTAR_FRAMESYNC:		// A FRAME-SYNC-PATTERN was found (no earlier START detected)
     rptr_syncrx_now();
     return 1;
@@ -422,13 +434,20 @@ int rptr_waitpattern_START(unsigned int pattern, unsigned int bitcounter) {
     } // fi
     break;
   } // hctiws
-  // now check "lossy" start condition
-  if ((pattern & 0x0001FFFF) == 0x0000AAAA) {	// oldest Bits in sync state...
-    if (count_no_of_1((pattern&0xFFFE0000)^(DSTAR_SYNCSTART&0xFFFE0000)) < 3) {
+
+
+  if (RPTR_is_set(RPTR_RX_AUTOINVERS)) {
+    if (pattern == ~DSTAR_SYNCSTART_LONG) {
+      gmsk_demodulator_toggle_invert();
       rptr_startrx_now();
-      return 1;			// request sync, restart rxbitcouter
+      return 1;
     }
-  } // fi old16 sync
+    if (((pattern^DSTAR_FRAMESYNC) & DSTAR_PATTERN_MASK)==0) {	// A inverted FRAME-SYNC-PATTERN
+      rptr_syncrx_now();
+      return 1;
+    }
+  } // fi auto-invers
+
   return 0;		// do nothing
 }
 
@@ -553,6 +572,9 @@ void rptr_receive(void) {
   gmsk_set_unlockedfunc(rptr_receiveunlock);
 }
 
+__inline void rptr_disable_receive(void) {
+  gmsk_demodulator_stop();
+}
 
 __inline char *rptr_getheader(void) {
   return (char *)DStar_RxHeader;
@@ -586,6 +608,9 @@ void rptr_transmit_preamble(void) {
     RPTR_Flags |= RPTR_TRANSMITTING;
     LED_Set(LED_RED);
     rptr_tx_state = RPTRTX_txdelay;
+    if (RPTR_is_set(RPTR_HALFDUPLEX)) {
+      rptr_disable_receive();
+    } // fi half-Duplex
   } // fi transmitter OFF
 }
 
@@ -611,6 +636,9 @@ void rptr_transmit(void) {
     LED_Set(LED_RED);
     rptr_tx_state = RPTRTX_preamble;
     rptr_clear_tx_buffer();
+    if (RPTR_is_set(RPTR_HALFDUPLEX)) {
+      rptr_disable_receive();
+    } // fi half-Duplex
   }
   TxVoice_WrPos = 0;
 }

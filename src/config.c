@@ -78,6 +78,16 @@ void cfg_apply_c0(void) {
   txd = swap16(CONFIG_C0.txdelay);
   if (txd > MAX_ALLOWED_TXDELAY) txd = MAX_ALLOWED_TXDELAY;
   gmsk_set_txdelay(txd);
+  // Auto-Invers-Mode
+  if (CONFIG_C0.flags & C0FLAG_RXAUTOINVERS)
+    RPTR_set(RPTR_RX_AUTOINVERS);
+  else
+    RPTR_clear(RPTR_RX_AUTOINVERS);
+  // Half-Duplex-Mode
+  if (CONFIG_C0.flags & C0FLAG_HALFDUPLEX)
+    RPTR_set(RPTR_HALFDUPLEX);
+  else
+    RPTR_clear(RPTR_HALFDUPLEX);
 }
 
 

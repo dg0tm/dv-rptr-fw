@@ -70,6 +70,9 @@ extern unsigned int RPTR_Flags;
 
 #define RPTR_TRANSMITTING	0x8000	// permanent indicator, don't clear flag
 
+#define RPTR_RX_AUTOINVERS	0x010000
+#define RPTR_HALFDUPLEX		0x020000
+
 #define RPTR_INDICATOR_MASK	0x1F3F	// all w/o permanents
 
 
@@ -108,6 +111,7 @@ void	rptr_replacement_header(void);
 
 
 void	rptr_receive(void);
+void	rptr_disable_receive(void);
 
 // In the case of long TXD, you can turn on PTT before you can send a valid
 // header. Until a transmission (rptr_transmit() call) starts, a preamble pattern will

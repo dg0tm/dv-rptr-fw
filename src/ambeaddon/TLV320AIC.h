@@ -53,7 +53,7 @@ void	tlv_unmute_adc(void);
  * gain in 0.5dB steps (-12dB..20dB ^= -24..40 allowed)
  * returns applied gain
  */
-char	tlv_set_adcgain(char gain);
+char	tlv_set_adcgain(signed char gain);
 
 
 // set MASTER volume (independent), range -127..48, ~ 0.5dB steps

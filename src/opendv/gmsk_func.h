@@ -100,8 +100,10 @@ int	gmsk_nextpacket(void);		// Kann nächstes Paket angehängt werden?
 
 
 void	gmsk_demodulator_start(void);
+void	gmsk_demodulator_stop(void);
 
 void	gmsk_demodulator_invert(int invert);
+void	gmsk_demodulator_toggle_invert(void);
 
 void	gmsk_set_patternfunc(tpattern_func patternhandler);
 void	gmsk_set_unlockedfunc(tgmsk_func unlock_handler);

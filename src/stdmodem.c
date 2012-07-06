@@ -24,6 +24,8 @@
  * 2012-06-18	change sequence of FLAG handling in handle_hfdata()
  * 		(DGL_HEADER and DGL_FRAME appears simoutanously)
  *
+ * 2012-07-02	Dual-IO-Port (replies on RS232 and USB-CDC). SFC 0x01 to switch DATA-Port
+ *
  */
 
 
@@ -40,6 +42,7 @@
 #include "twi_func.h"
 #include "gmsk_func.h"
 #include "usb_func.h"
+#include "rs232_func.h"
 #include "rptr_func.h"		// realtime-handler part of HF I/O
 
 #include "controls.h"
@@ -65,11 +68,11 @@ typedef enum {
 
 
 
-typedef int (*tdata_rx_fct)(void);		// Data-Received function (return #bytes)
-typedef int (*tdata_cpy_rx)(char *, int);	// Copy received data
+//typedef int (*tdata_rx_fct)(void);		// Data-Received function (return #bytes)
+//typedef int (*tdata_cpy_rx)(char *, int);	// Copy received data
 typedef void (*tdata_tx_fct)(const char *, int); // Data-Transmit function
-typedef unsigned char (*tdata_look_b)(int);	// Data-Look-Byte function
-typedef unsigned short (*tdata_look_lew)(int);	// Data-Look-Word function (Little Endian)
+//typedef unsigned char (*tdata_look_b)(int);	// Data-Look-Byte function
+//typedef unsigned short (*tdata_look_lew)(int);	// Data-Look-Word function (Little Endian)
 
 
 typedef struct PACKED_DATA {
@@ -116,12 +119,14 @@ extern U32	dgl_capabilities;
 
 // functions used for pc/gateway communication:
 // pre-initialization to USB-CDC, but easy reconfigurable to RS232
-tdata_rx_fct	data_received	= cdc_received;
-tdata_cpy_rx	data_copyrx	= cdc_copyblock;
 tdata_tx_fct	data_transmit	= cdc_transmit;
-tfunction	data_flushrx	= cdc_flushrx;
-tdata_look_b	data_look_byte  = cdc_look_byte;
-tdata_look_lew	data_look_word  = cdc_look_leword;
+tdata_tx_fct	sfc_async_tx	= cdc_transmit;	// used for async SSFC answers.
+
+//tdata_rx_fct	data_received	= cdc_received;
+//tdata_cpy_rx	data_copyrx	= cdc_copyblock;
+//tfunction	data_flushrx	= cdc_flushrx;
+//tdata_look_b	data_look_byte  = cdc_look_byte;
+//tdata_look_lew	data_look_word  = cdc_look_leword;
 
 
 tRS232packet	rxdatapacket;	// data from pc/gateway received
@@ -152,16 +157,17 @@ void init_modemdata(void) {
 }
 
 
-
+/*
 void data_timeout(int rx_length) {
   data_flushrx();		// simple flush buffer!
 }
+*/
 
 /* rptr_reset_inferface() is called from USB-hander, if someone unplug the USB
  * in this case disable DV-RPTR (exeption: AMBE-addon used for HF)
  */
 void rptr_reset_inferface(void) {	// usb disconneced
-  if (data_received == cdc_received) {	// we use USB CDC interface
+  if (data_transmit == cdc_transmit) {	// we use USB CDC interface
     if (!RPTR_is_set(RPTR_AMBEDECODEHF)) // not HF decode to hear it?
       rptr_standby();
     else
@@ -225,6 +231,8 @@ void update_status(void) {
 #define	SFC_TRX_CAPABILITIES	0xC1	// Transceiver Capabilities Readout
 #define	SFC_DGL_CAPABILITIES	0xC2	// AMBE-addon presence / capabilities
 
+#define SFC_SWITCH_DATA_PORT	0x01
+
 #define SFC_GET_CURR_RSSI	0x08
 
 #define SFC_CORRECT_TX_CLOCK	0x10
@@ -264,7 +272,7 @@ void sfc_twi_wrt_return(tTWIresult res, unsigned int len) {
     anslen = 11;
   }
   append_crc_ccitt(async_reply.data, anslen);
-  data_transmit(async_reply.data, anslen);
+  sfc_async_tx(async_reply.data, anslen);
 }
 
 
@@ -292,6 +300,13 @@ void handle_special_func_cmd(int len) {
     answer.data[PKT_PARAM_IDX+3] = LSB2W(dgl_capabilities);
     answer.data[PKT_PARAM_IDX+4] = LSB3W(dgl_capabilities);
     break;
+  case SFC_SWITCH_DATA_PORT:
+    if (len == 3) {
+      if (rxdatapacket.data[PKT_PARAM_IDX+1] & 0x01)
+	data_transmit = rs232_transmit;
+      else
+	data_transmit = cdc_transmit;
+    } else pc_send_byte(NAK);
   case SFC_CORRECT_TX_CLOCK:
     parameter = (rxdatapacket.data[PKT_PARAM_IDX+1]) | (rxdatapacket.data[PKT_PARAM_IDX+2]<<8) |
       (rxdatapacket.data[PKT_PARAM_IDX+3]<<16) | (rxdatapacket.data[PKT_PARAM_IDX+4]<<24);
@@ -417,7 +432,8 @@ bool config_readout(unsigned char cfg_id) {
       nextblock = cfg_read_c3(nextblock);
       nextblock = cfg_read_c4(nextblock);	// analog frontend
       nextblock = cfg_read_c5(nextblock);	// AGC+DRC
-    }
+      nextblock = cfg_read_c6(nextblock);	// Filter Coeffs
+    } // fi Dongle
     answer.head.len = nextblock - answer.data - 3;
     break;
   case 0xC0:
@@ -487,7 +503,7 @@ __inline void add_multi_voice_2_rptr(int len) {
 
 // handle_serial_paket()
 // verarbeitet "paket" mit len optionalen Daten (Header NICHT mitgerechnet).
-__inline void handle_pc_paket(int len) {
+__inline void handle_pc_paket(int len, tdata_tx_fct rply_transmit) {
   answer.head.len = 0;			// no answer.
   last_pc_activity = Get_system_register(AVR32_COUNT);
   switch (rxdatapacket.head.cmd) {	// Kommando-Byte
@@ -553,7 +569,7 @@ __inline void handle_pc_paket(int len) {
     }
     break;
   case RPTR_START:		// early Turn-On xmitter, if configured a long TXD
-    if ((status_control & STA_TXENABLE_MASK) && (len==3)) {
+    if ((status_control & STA_TXENABLE_MASK) && (len==3) && (rply_transmit==data_transmit)) {
       if (rxdatapacket.data[PKT_PARAM_IDX] != current_txid) {
 	rptr_transmit_preamble(); // PTTon, wait for a header to start TX
 	if (rptr_tx_state <= RPTRTX_preamble)	// starts w/o interrupting a running transmission
@@ -563,44 +579,49 @@ __inline void handle_pc_paket(int len) {
       pc_send_byte(NAK);
     break;
   case RPTR_HEADER:		// start transmitting TXDelay-Preamble-Start-Header
-    if (rptr_tx_state != RPTRTX_header)	// update only, if not transmitting just this moment
-      rptr_init_header((tds_header *)&rxdatapacket.data[PKT_PARAM_IDX+4]);
-    if ((status_control & STA_TXENABLE_MASK) && (!dgl_is_encoding())) {
-      if ((rptr_tx_state <= RPTRTX_preamble) || (rxdatapacket.data[PKT_PARAM_IDX] != current_txid)) {
-        rptr_transmit();		// Turn on Xmitter
-        current_txid = rxdatapacket.data[PKT_PARAM_IDX];
-      } // fi
-      // -> ignore a HEADER msg with same TXID while sending
-      //add_icom_voice_reset();
-    } else
-      pc_send_byte(NAK);
+    if  (rply_transmit==data_transmit) {
+      if (rptr_tx_state != RPTRTX_header)	// update only, if not transmitting just this moment
+	rptr_init_header((tds_header *)&rxdatapacket.data[PKT_PARAM_IDX+4]);
+      if ((status_control & STA_TXENABLE_MASK) && (!dgl_is_encoding())) {
+	if ((rptr_tx_state <= RPTRTX_preamble) || (rxdatapacket.data[PKT_PARAM_IDX] != current_txid)) {
+	  rptr_transmit();		// Turn on Xmitter
+	  current_txid = rxdatapacket.data[PKT_PARAM_IDX];
+	} // fi
+	// -> ignore a HEADER msg with same TXID while sending
+	//add_icom_voice_reset();
+      } else
+	pc_send_byte(NAK);
+    } else pc_send_byte(NAK);
     // keep 2 bytes for future use, keep layout identical to RX
     break;
   case RPTR_RXSYNC:		// start transmitting TXDelay-Preamble-Start-Header
-    if (rptr_tx_state != RPTRTX_header)	// update only, if not transmitting just this moment
-      rptr_replacement_header();
-    if ((status_control & STA_TXENABLE_MASK) && (!dgl_is_encoding())) {
-      if ((rptr_tx_state <= RPTRTX_preamble) || (rxdatapacket.data[PKT_PARAM_IDX] != current_txid)) {
-	rptr_transmit();	// Turn on Xmitter only if PTT off
-	current_txid = rxdatapacket.data[PKT_PARAM_IDX];
-      } // if idle
-      // (transmission use last header)
-      //add_icom_voice_reset();
-    } else
-      pc_send_byte(NAK);
+    if  (rply_transmit==data_transmit) {
+      if (rptr_tx_state != RPTRTX_header)	// update only, if not transmitting just this moment
+	rptr_replacement_header();
+      if ((status_control & STA_TXENABLE_MASK) && (!dgl_is_encoding())) {
+	if ((rptr_tx_state <= RPTRTX_preamble) || (rxdatapacket.data[PKT_PARAM_IDX] != current_txid)) {
+	  rptr_transmit();	// Turn on Xmitter only if PTT off
+	  current_txid = rxdatapacket.data[PKT_PARAM_IDX];
+	} // if idle
+	// (transmission use last header)
+	//add_icom_voice_reset();
+      } else
+	pc_send_byte(NAK);
+    } else pc_send_byte(NAK);
     break;
   case RPTR_DATA:		// transmit data (voice and slowdata or sync)
-    if (rxdatapacket.data[PKT_PARAM_IDX] == current_txid)
+    if ((rxdatapacket.data[PKT_PARAM_IDX] == current_txid) && (rply_transmit==data_transmit))
       add_multi_voice_2_rptr(len);
     break;
   case RPTR_EOT:		// end transmission with EOT tail
-    if (len == 3) {
+    if ((len == 3) && (rply_transmit==data_transmit)) {
       if (rxdatapacket.data[PKT_PARAM_IDX] == current_txid)
         rptr_endtransmit(rxdatapacket.data[PKT_PARAM_IDX+1]);
     } else
       rptr_endtransmit(0xFF);	// stop after buffer is empty
     break;
   case RPTR_SET_SPECIALFUNCT:
+    sfc_async_tx = rply_transmit;
     handle_special_func_cmd(len);
     break;
   default:
@@ -613,7 +634,7 @@ __inline void handle_pc_paket(int len) {
     answer.head.cmd = 0x80|rxdatapacket.head.cmd;
     answer.head.len = swap16(answer.head.len);
     append_crc_ccitt(answer.data, anslen);
-    data_transmit(answer.data, anslen);
+    rply_transmit(answer.data, anslen);
   } // fi send
 }
 
@@ -624,24 +645,25 @@ __inline void handle_pc_paket(int len) {
 // Bei gültigen Paketen, wird 'handle_pc_paket()'
 // aufgerufen.
 void handle_pcdata(void) {
-  int rxbytes, burst_cnt = 5;
+  int rxbytes_cdc, rxbytes_ser, burst_cnt = 5;
   do {
-    rxbytes = data_received();
-    if (rxbytes > 4) {					// a frame shout be have D0 length and crc
+    // 1st: CDC (USB) interface
+    rxbytes_cdc = cdc_received();
+    if (rxbytes_cdc > 4) {					// a frame shout be have D0 length and crc
       U16 length = 0;
-      if (data_look_byte(0) != FRAMESTARTID) {
-	data_flushrx();		// destroy garbage on COM/USB
+      if (cdc_look_byte(0) != FRAMESTARTID) {
+	cdc_flushrx();		// destroy garbage on COM/USB
       } else {
-	length = data_look_word(1);
+	length = cdc_look_leword(1);
 	if (length <= (sizeof(rxdatapacket)-5)) {
-	  if (length <= (rxbytes-5)) {
-	    data_copyrx(rxdatapacket.data, length+5);
+	  if (length <= (rxbytes_cdc-5)) {
+	    cdc_copyblock(rxdatapacket.data, length+5);
 	    // data_flushrx();	// needed for buggy software, obsolete - using timeout
 	  } else					// packet still in receiving (on slow serial)
 	    length = 0;
 	} else {
-	  data_flushrx();				// incorrect packet
-	  length = 0;				// remove all data from buffer
+	  cdc_flushrx();				// incorrect packet
+	  length = 0;					// remove all data from buffer
 	} // fi incomplete
       } // esle
       if (length > 0) {
@@ -650,10 +672,40 @@ void handle_pcdata(void) {
 	if (status_control&STA_CRCENABLE_MASK) {	// check CRC only, if needed.
 	  pkt_crc = crc_ccitt(rxdatapacket.data, length+5);
 	} // fi check CRC
-	if (pkt_crc==0) handle_pc_paket(length);	// crc correct
+	if (pkt_crc==0) handle_pc_paket(length, cdc_transmit);	// crc correct
       } // fi payload
     } // fi was da
-  } while ( (rxbytes > 4) && ((--burst_cnt)>0) );
+
+    // 2nd: Serial RS232 interface (embedded)
+    rxbytes_ser = rs232_received();
+    if (rxbytes_ser > 4) {				// a frame shout be have D0 length and crc
+      U16 length = 0;
+      if (rs232_look_byte(0) != FRAMESTARTID) {
+	rs232_flushrx();		// destroy garbage on COM/USB
+      } else {
+	length = rs232_look_leword(1);
+	if (length <= (sizeof(rxdatapacket)-5)) {
+	  if (length <= (rxbytes_ser-5)) {
+	    rs232_copyblock(rxdatapacket.data, length+5);
+	    // data_flushrx();	// needed for buggy software, obsolete - using timeout
+	  } else					// packet still in receiving (on slow serial)
+	    length = 0;
+	} else {
+	  rs232_flushrx();				// incorrect packet
+	  length = 0;					// remove all data from buffer
+	} // fi incomplete
+      } // esle
+      if (length > 0) {
+        // packet begins with a valid frame / FRAMESTARTID checked before
+	U16 pkt_crc = 0;
+	if (status_control&STA_CRCENABLE_MASK) {	// check CRC only, if needed.
+	  pkt_crc = crc_ccitt(rxdatapacket.data, length+5);
+	} // fi check CRC
+	if (pkt_crc==0) handle_pc_paket(length, rs232_transmit); // crc correct
+      } // fi payload
+    } // fi was da
+
+  } while ( ((rxbytes_cdc > 4)||(rxbytes_ser > 4)) && ((--burst_cnt)>0) );
 
   // PC communication watchdog:
   if (status_control&STA_WDENABLE_MASK) {	// active
