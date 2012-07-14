@@ -27,7 +27,7 @@
  *
  * Report:
  * 2011-09-29	Fix a bug (wrong memcpy source @ bufferwrap) in cdc_copyblock().
- *
+ * 2012-07-14	BugFix 64Byte EP Fifo Wrap Bug
  */
 
 //#define NOTIFY_USBHOST
@@ -60,7 +60,6 @@ extern Bool usb_connected;
 
 char	*cdc_txbuffer;
 U32	cdc_txbuffer_len;
-//Bool	cdc_rxfifo_empty;
 
 int	cdc_lastbytes_rx;
 
@@ -123,7 +122,6 @@ static void usb_wait_for_connect(void) {
     // CDC Transmitbuffer Init:
     cdc_txbuffer_len = 0;
     cdc_txbuffer = NULL;
-//    cdc_rxfifo_empty = TRUE;
   } // fi VBUS Pin high
 }
 
@@ -208,12 +206,12 @@ void cdc_receiving(void) {		// return: Anzahl empfangener Bytes im Fifo
         usb_read_ep_rxpacket(RX_EP, (void *)cdc_rxbuffer+cdc_wrpos, bytes_left, NULL);
         usb_read_ep_rxpacket(RX_EP, (void *)cdc_rxbuffer, bytes_rx-bytes_left, NULL);
       }
-      Usb_ack_out_received_free(RX_EP);
       cdc_wrpos = (cdc_wrpos+bytes_rx)%CDC_RXBUFFERSIZE;
       // End copy in own fifo
       cdc_rxidle_pos = cdc_sof_counter + cdc_timeoutval;
       cdc_timeout_enabled = (cdc_timeoutval>0)&&(cdc_timeout_fct!=NULL);
     } // fi copy received
+    Usb_ack_out_received_free(RX_EP);	// moved outside of if-con
   } else if (cdc_timeout_enabled) {
     if ((int)(cdc_sof_counter - cdc_rxidle_pos) >= 0) {
       cdc_timeout_fct(cdc_rxlen);
