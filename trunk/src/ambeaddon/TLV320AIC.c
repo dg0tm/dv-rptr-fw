@@ -23,6 +23,7 @@
  * Report:
  * 2012-06-30	Config C6 added, stores 28x16bit Coeeffs in LittleEndian Format.
  * 2012-07-06	TLV_present bool enabled I²C register write only if HW found on init()
+ * 2012-07-18   TWI blocking access (job-buffer full)
  */
 
 #include "TLV320AIC.h"
@@ -204,13 +205,22 @@ void init_pll1708(void) {
 
 
 
+void tlv_blocking_writereg(unsigned char regno, unsigned char value) {
+  tTWIresult r;
+  do {
+    r = reg_write(TLV_TWI_ADR, regno, value, 1, NULL);
+    if (r==TWIbusy) SLEEP();
+  } while (r==TWIbusy);
+}
+
+
 void tlv_writereg(unsigned short reg, unsigned char value) {
   if (TLV_present) {
     if (MSB(reg) != TLV_page) {
       TLV_page = MSB(reg);
-      reg_write(TLV_TWI_ADR, TLV_REG_PAGECTRL, TLV_page, 1, NULL);
+      tlv_blocking_writereg(TLV_REG_PAGECTRL, TLV_page);
     } // fi change page
-    reg_write(TLV_TWI_ADR, LSB(reg), value, 1, NULL);
+    tlv_blocking_writereg(LSB(reg), value);
   } // fi fond HW
 }
 
@@ -236,23 +246,22 @@ void tlv_tickwait(U32 ticks_to_wait) {
   U32 strttick = Get_system_register(AVR32_COUNT);
   systick = strttick + ticks_to_wait;
   if (systick < strttick) while (Get_system_register(AVR32_COUNT) > strttick) {
-    watchdog();
+    SLEEP();
   }
   while (Get_system_register(AVR32_COUNT) < systick) {
-    watchdog();
+    SLEEP();
   } // elihw
 }
 
 
-
+/*
 void tlv_twiwait(void) {
   int maxw;
   for (maxw=5000; (maxw>0)&&(twi_busy()); maxw--) {
     SLEEP();
-    watchdog();
   }
 }
-
+*/
 
 void tlv_mute_both(void) {
   tlv_writereg(TLV_REG_DACVOLCTRL, 0x0C);	// mute DAC
@@ -552,7 +561,6 @@ tfilter_config	CONFIG_C6;
  * active in every filter-selection
  */
 void tlvfilter_load_iir(const S16 *coeffs) {
-  tlv_twiwait();
   tlv_writereg(TLV_REG_DFC_BASE+ 8, MSB(coeffs[0]));
   tlv_writereg(TLV_REG_DFC_BASE+ 9, LSB(coeffs[0]));
   tlv_writereg(TLV_REG_DFC_BASE+10, MSB(coeffs[1]));
@@ -582,7 +590,6 @@ void tlvfilter_load_bqfir(int nr, const S16 *coeffs) {
   U16 BiquadRegStart;
   if (nr > 4) return; // only Biquad A,B,C,D,E possible
   BiquadRegStart = TLV_REG_DFC_BASE + 14 + (nr * 10);
-  tlv_twiwait();
   tlv_writereg(BiquadRegStart  , MSB(coeffs[0]));	// N0
   tlv_writereg(BiquadRegStart+1, LSB(coeffs[0]));
   tlv_writereg(BiquadRegStart+2, MSB(coeffs[1]));	// N1
