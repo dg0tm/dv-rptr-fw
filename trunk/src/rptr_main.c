@@ -42,7 +42,7 @@
  * 2011-09-02 V0.07  Checksum enable-function
  * 2011-09-03 V0.08  MODFDIS bit @ dac_init(), Test-Loop (0x1F cmd)
  *                   bugfix handle_pcdata() length check
- * 2011-09-05 V0.09  rptr_addtxvoice() nummeration logic bugfix
+ * 2011-09-05 V0.09  rptr_addtxvoice() enumeration logic bugfix
  * 2011-09-06 V0.10  gmsk: Additional Interrupt-Handler keeps critical Timer-based ADC-start, DAC-out
  * 		     with a minimum of jitter in the case of duplex operation
  * 2011-09-18 V0.12  various tests with demodulator.
@@ -73,8 +73,8 @@
  * 2012-01-22 V1.10e BugFix in controls.c module (dead carrier tx)
  * 2012-01-26 V1.20  THE LAST TRY: pic21mode.h, new reduced incompatible!!! interface
  *                   Replacement-Header, when VOICE w/o HEADER
- * 2012-01-30 V1.20a Only a simple Fifo logic, ignoring frame numberation completly
- * 2012-02-01 V1.11  TX-Buffer will be cleared before TX starts completly.
+ * 2012-01-30 V1.20a Only a simple Fifo logic, ignoring frame numberation completely
+ * 2012-02-01 V1.11  TX-Buffer will be cleared before TX starts completely.
  *                   On longer gaps, a FRAME-SYNC is added every 21 silence-packet
  *                   A additional byte "transmit position" will be appear in STATUS pkt
  *                   A repacement-header will be created when tx starts with SYNC.
