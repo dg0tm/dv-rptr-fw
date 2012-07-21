@@ -247,7 +247,7 @@ void dgl_start_transmit(void) {
         rptr_transmit_fullpreamble();
       } // esle fi
     } else {
-      enable_ptt();
+      if (!RPTR_is_set(RPTR_PTTLOCKED)) enable_ptt();
       trx_transmit();
       gmsk_set_reloadfunc(dgl_transmit_header);	// after TXed preamble + START-pattern, load header
       rptr_transmit_fullpreamble();

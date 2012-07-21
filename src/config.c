@@ -83,6 +83,11 @@ void cfg_apply_c0(void) {
     RPTR_set(RPTR_RX_AUTOINVERS);
   else
     RPTR_clear(RPTR_RX_AUTOINVERS);
+  // PTT locked settings
+  if (CONFIG_C0.flags & C0FLAG_PTTLOCKED)
+    RPTR_set(RPTR_PTTLOCKED);
+  else
+    RPTR_clear(RPTR_PTTLOCKED);
   // Half-Duplex-Mode
   if (CONFIG_C0.flags & C0FLAG_HALFDUPLEX)
     RPTR_set(RPTR_HALFDUPLEX);
