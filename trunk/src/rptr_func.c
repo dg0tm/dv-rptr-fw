@@ -600,7 +600,7 @@ __inline void rptr_forcefirstsync(void) {
 
 void rptr_transmit_preamble(void) {
   if (!is_pttactive()) {
-    enable_ptt();
+    if (!RPTR_is_set(RPTR_PTTLOCKED)) enable_ptt();
     trx_transmit();
     TxVoice_RdPos = 0;				// counts timeout of preamble loop
     gmsk_set_reloadfunc(rptr_preamble);		// transmit preamble, until rptr_transmit() or timeout
@@ -628,7 +628,7 @@ void rptr_transmit(void) {
       gmsk_set_reloadfunc(rptr_transmit_start);	// change from preamble to header
     } // esle fi
   } else {
-    enable_ptt();
+    if (!RPTR_is_set(RPTR_PTTLOCKED)) enable_ptt();
     trx_transmit();
     gmsk_set_reloadfunc(rptr_transmit_header);	// after TXed preamble + START-pattern, load header
     rptr_transmit_fullpreamble();

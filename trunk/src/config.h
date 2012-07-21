@@ -43,6 +43,7 @@ typedef struct PACKED_DATA {
 #define C0FLAG_CHAN_B		0x04
 #define C0FLAG_RXAUTOINVERS	0x08
 
+#define C0FLAG_PTTLOCKED	0x40	// disables PTT-Pin while TX (Dongle-Mode)
 #define C0FLAG_HALFDUPLEX	0x80	// disables RX while TX
 
 

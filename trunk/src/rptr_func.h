@@ -72,6 +72,7 @@ extern unsigned int RPTR_Flags;
 
 #define RPTR_RX_AUTOINVERS	0x010000
 #define RPTR_HALFDUPLEX		0x020000
+#define RPTR_PTTLOCKED		0x040000
 
 #define RPTR_INDICATOR_MASK	0x1F3F	// all w/o permanents
 

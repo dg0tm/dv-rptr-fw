@@ -91,7 +91,8 @@
  * 2012-07-02 V1.65  Dual-Port-Communication: PCP2 works on serial Port (115k2) too.
  *                   See 'stdmodem.c' for details.
  * 2012-07-03 V1.66  New Features "RX auto inverse" and "half-duplex rx"
- *
+ * 2012-07-21 V1.66e DeadLock on SLEEP() on dgl_init() fixed (release-version only)
+ * 2012-07-21 V1.67  C0-Config Flagbit 6 = PTTLOCKED (no external PTT_OUT)
  *
  * ToDo:
  * - Serial (RS232) port configurable
@@ -214,19 +215,20 @@ int main(void) {
   init_modemdata();			// Initialisation of persitent Pkts (Header, Voice)
 
   Enable_global_interrupt();		// Enable all interrupts.
+  idle_timer_start();			// keep µC alive to handle external WD & SLEEP() resume
 
+  // *** initializing ADDon boards (needs enabled interrupts + idle timer)
   trx_capabilities = trx_init();	// init optional TRX module
   dgl_capabilities = dgl_init();	// Test for a AMBE addon board and initialize it...
 
   cfg_apply_c0();			// setup default config (if none from eeprom)
 
-  idle_timer_start();			// keep ÂµC alive to handle external WD, if
   // (start idle_timer before "startup_modeinit()")
 
   // *** loading permanent stored config data ***
   if (load_internal_eeprom()) {
     load_configs_from_eeprom();
-    startup_modeinit();			// setup operation mode on powerup
+    startup_modeinit();			// setup operation mode on power-up
   } // fi
 
   // no other activity (USB)
