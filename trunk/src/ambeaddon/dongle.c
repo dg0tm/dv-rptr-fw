@@ -140,12 +140,12 @@ void dgl_transmit_voicedata(void) {
 void dgl_transmit_firstvoice(void) {
   gmsk_transmit(dgl_voice.packet, DSTAR_FRAMEBITSIZE, DSTAR_FRAMEBITSIZE-DSTAR_BEFOREFRAMEENDS);
   if (ambe_packetcount()==0) {		// AMBE funktioniert nicht bzw. steckt im Sleep
-    gmsk_set_reloadfunc(dgl_stopped);
     ambe_stop();
+    rptr_transmit_eotpattern();
+    gmsk_set_reloadfunc(dgl_stopped);
+    rptr_tx_state = RPTRTX_eot;
   } else if (rptr_tx_state==RPTRTX_idle) {
-    gmsk_set_reloadfunc(&dgl_stopped);
-    ambe_standby();
-    rptr_tx_state = RPTRTX_lastframe;
+    dgl_transmit_stopframe();
   } else {
     ambe_getvoice(dgl_voice.voice);
     slowdata_get_sync(dgl_voice.data);
@@ -161,11 +161,15 @@ void dgl_transmit_firstvoice(void) {
 
 
 void dgl_transmit_header(void) {
-  gmsk_transmit(dgl_HeaderBS, DSTAR_HEADEROUTBITSIZE, DSTAR_HEADEROUTBITSIZE-DSTAR_BEFOREFRAMEENDS);
-  gmsk_set_reloadfunc(&dgl_transmit_firstvoice);
-  rptr_tx_state = RPTRTX_header;
-  ambe_getsilence(dgl_voice.voice);
-  dgl_FrameCount = 0;
+  if (rptr_tx_state == RPTRTX_idle) {
+    dgl_transmit_stopframe();
+  } else {
+    gmsk_transmit(dgl_HeaderBS, DSTAR_HEADEROUTBITSIZE, DSTAR_HEADEROUTBITSIZE-DSTAR_BEFOREFRAMEENDS);
+    gmsk_set_reloadfunc(&dgl_transmit_firstvoice);
+    rptr_tx_state = RPTRTX_header;
+    ambe_getsilence(dgl_voice.voice);
+    dgl_FrameCount = 0;
+  }
 }
 
 
@@ -236,7 +240,8 @@ void dgl_start_transmit(void) {
 #else
     idle_timer_start();				// disable receiving
 #endif
-    if (is_pttactive()) {			// DV-RPTR is transmitting, restart it
+    if (rptr_tx_state > RPTRTX_idle) {		// DV-RPTR is transmitting, restart it
+    //if (is_pttactive()) {
       if (dgl_micptt_triggered) return;		// already transmitting
       if (rptr_tx_state == RPTRTX_voicedata) {
         gmsk_set_reloadfunc(dgl_break_current);	// unmittelbar Header hinter EOT
@@ -264,8 +269,12 @@ void dgl_start_transmit(void) {
 
 void dgl_stop_transmit(void) {
   if (ambe_mode != AMBE_noboard) {		// ignore, if no board
-    if (is_pttactive() && (ambe_getstate() >= AMBEbooting)) {
-      rptr_tx_state = RPTRTX_lastframe;
+//    if (is_pttactive() && (ambe_getstate() >= AMBEbooting)) {
+    if ((rptr_tx_state > RPTRTX_idle) && (ambe_getstate() >= AMBEbooting)) {
+      if (rptr_tx_state == RPTRTX_voicedata)
+        rptr_tx_state = RPTRTX_lastframe;
+      else
+	rptr_tx_state = RPTRTX_idle;
     }
   }
 }
@@ -288,7 +297,8 @@ unsigned int dgl_init(void) {
 
 
 int dgl_is_encoding(void) {
-  return (is_pttactive() && dgl_micptt_triggered);
+//  return (is_pttactive() && dgl_micptt_triggered);
+  return ((rptr_tx_state > RPTRTX_idle) && dgl_micptt_triggered);
 }
 
 

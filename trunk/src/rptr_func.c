@@ -599,7 +599,8 @@ __inline void rptr_forcefirstsync(void) {
 
 
 void rptr_transmit_preamble(void) {
-  if (!is_pttactive()) {
+  //if (!is_pttactive()) {
+  if (rptr_tx_state <= RPTRTX_idle) {
     if (!RPTR_is_set(RPTR_PTTLOCKED)) enable_ptt();
     trx_transmit();
     TxVoice_RdPos = 0;				// counts timeout of preamble loop
@@ -619,15 +620,8 @@ void rptr_transmit(void) {
 #if (DVTX_TIMER_CH==IDLE_TIMER_CH)
   idle_timer_stop();
 #endif
-  if (is_pttactive()) {				// DV-RPTR is transmitting, restart it
-    if (rptr_tx_state == RPTRTX_voicedata) {
-      gmsk_set_reloadfunc(rptr_break_current);	// unmittelbar Header hinter EOT
-    } else if (rptr_tx_state == RPTRTX_lastframe) {
-      gmsk_set_reloadfunc(rptr_begin_new_tx);
-    } else {
-      gmsk_set_reloadfunc(rptr_transmit_start);	// change from preamble to header
-    } // esle fi
-  } else {
+  if (rptr_tx_state <= RPTRTX_idle) {		// idle, activate TX
+//  if (!is_pttactive()) {
     if (!RPTR_is_set(RPTR_PTTLOCKED)) enable_ptt();
     trx_transmit();
     gmsk_set_reloadfunc(rptr_transmit_header);	// after TXed preamble + START-pattern, load header
@@ -639,6 +633,14 @@ void rptr_transmit(void) {
     if (RPTR_is_set(RPTR_HALFDUPLEX)) {
       rptr_disable_receive();
     } // fi half-Duplex
+  } else {		// DV-RPTR is transmitting, restart it
+    if (rptr_tx_state == RPTRTX_voicedata) {
+      gmsk_set_reloadfunc(rptr_break_current);	// unmittelbar Header hinter EOT
+    } else if (rptr_tx_state == RPTRTX_lastframe) {
+      gmsk_set_reloadfunc(rptr_begin_new_tx);
+    } else {
+      gmsk_set_reloadfunc(rptr_transmit_start);	// change from preamble to header
+    } // esle fi
   }
   TxVoice_WrPos = 0;
 }
