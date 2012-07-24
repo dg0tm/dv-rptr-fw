@@ -43,6 +43,7 @@
  * 2012-01-11  JA  BugFix Pattern-Handling if PLL not correct an a to early match appears.
  * 2012-02-01  JA  Restoring FRAME-SYNC while transmitting silence frames
  *                 Replacement-Header: MyCall/Sign defined in rptr_func.h
+ * 2012-07-24  JA  EOT-Command locks Stop-Position for current stream
  *
  * ToDo:
  * - Bug WrPos
@@ -643,6 +644,7 @@ void rptr_transmit(void) {
     } // esle fi
   }
   TxVoice_WrPos = 0;
+  RPTR_clear(RPTR_EOT_DEFINED);
 }
 
 
@@ -655,7 +657,8 @@ void rptr_endtransmit(unsigned char pkt_nr_stop) {
   } else if (pkt_nr_stop < VoiceTxBufSize)
     TxVoice_StopPos = pkt_nr_stop;
   else
-    TxVoice_StopPos = TxVoice_WrPos;	//+1) % VoiceTxBufSize;
+    TxVoice_StopPos = TxVoice_WrPos;
+  RPTR_set(RPTR_EOT_DEFINED);
 }
 
 
@@ -665,7 +668,9 @@ void rptr_endtransmit(unsigned char pkt_nr_stop) {
  */
 void rptr_addtxvoice(const tds_voicedata *buf, unsigned char pkt_nr) {
   tds_voicedata *new_data;
-  TxVoice_StopPos = TxVoice_RdPos;	// update stop-position, long-gap silence
+
+  if (!RPTR_is_set(RPTR_EOT_DEFINED))	// only, if no EOT rxed
+    TxVoice_StopPos = TxVoice_RdPos;	// update stop-position, long-gap silence
 
   if ((pkt_nr >= VoiceTxBufSize) || (pkt_nr == VOICE_TX_DIFFERENCE(TxVoice_RdPos, 1)))
     return;		// prevent buffer overflow OR writing on current TXed buffer.
