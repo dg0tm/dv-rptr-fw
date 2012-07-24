@@ -93,6 +93,7 @@
  * 2012-07-03 V1.66  New Features "RX auto inverse" and "half-duplex rx"
  * 2012-07-21 V1.66e DeadLock on SLEEP() on dgl_init() fixed (release-version only)
  * 2012-07-21 V1.67  C0-Config Flagbit 6 = PTTLOCKED (no external PTT_OUT)
+ * 2012-07-24 V1.68  EOT-Command locks Stop-Position for current stream
  *
  * ToDo:
  * - Serial (RS232) port configurable
@@ -215,7 +216,7 @@ int main(void) {
   init_modemdata();			// Initialisation of persitent Pkts (Header, Voice)
 
   Enable_global_interrupt();		// Enable all interrupts.
-  idle_timer_start();			// keep µC alive to handle external WD & SLEEP() resume
+  idle_timer_start();			// keep ï¿½C alive to handle external WD & SLEEP() resume
 
   // *** initializing ADDon boards (needs enabled interrupts + idle timer)
   trx_capabilities = trx_init();	// init optional TRX module

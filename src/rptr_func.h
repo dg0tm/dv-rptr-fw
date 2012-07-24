@@ -74,6 +74,8 @@ extern unsigned int RPTR_Flags;
 #define RPTR_HALFDUPLEX		0x020000
 #define RPTR_PTTLOCKED		0x040000
 
+#define RPTR_EOT_DEFINED	0x80000000	// set on rptr_endtransmit(), clr on tx()
+
 #define RPTR_INDICATOR_MASK	0x1F3F	// all w/o permanents
 
 
