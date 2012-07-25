@@ -24,6 +24,7 @@
  * 2012-06-30	Config C6 added, stores 28x16bit Coeeffs in LittleEndian Format.
  * 2012-07-06	TLV_present bool enabled I²C register write only if HW found on init()
  * 2012-07-18   TWI blocking access (job-buffer full)
+ * 2012-07-25	TLV_init() optimized
  */
 
 #include "TLV320AIC.h"
@@ -37,9 +38,9 @@
 #include <string.h>
 
 #ifdef AMBE_PROTOTYPE
-#define TLV_MASTERCLOCK		12288
+#define TLV_MASTERCLOCK		12288 	// (PLL1708)
 #else
-#define TLV_MASTERCLOCK		16384	// in kHz (old = 12288)
+#define TLV_MASTERCLOCK		16384	// in kHz
 #endif
 
 
@@ -114,7 +115,8 @@
 // Page 4 ADC Digital Filters
 #define TLV_REG_DFC_BASE	0x0400
 
-#define TLV_SOFTRESET_WAIT	(MASTERCLOCK/10000*20)	// 2.0ms (Minimum 1ms)
+#define TLV_SOFTRESET_WAIT	(MASTERCLOCK/1000*2)	// 2.0ms (Minimum 1ms)
+#define TLV_PLLSTABLE_WAIT	(MASTERCLOCK/1000*20)	// 20ms (Minimum 10ms)
 
 
 
@@ -124,8 +126,8 @@ typedef struct PACKED_DATA {
   unsigned char	mic_imp;	// Microphone Impedance Value
   signed   char	adc_gain;	// ADC Gain Value -12..20dB (0.5dB steps)
   unsigned char adc_filter;	// Selection between PB4,PB5 and PB6
-  unsigned char	spkr_out;	// Ext. Speaker on/off bit7; 6,12,18,24dB (6dB steps)
-  signed   char hs_out;		// handset speaker on/off bit7; gain 0..9dB (1dB steps)
+  unsigned char	spkr_out;	// inernal speaker -127 = off; gain 0.5dB steps
+  signed   char hs_out;		// handset speaker -127 = off; gain 0.5dB steps
   signed   char volume;		// DAC volume (-63.5dB .. +24dB; 0.5dB steps) 0x7F = Poti
   unsigned char dac_filter;	// DAC filter selection
 } t_config_4;
@@ -149,6 +151,9 @@ typedef struct PACKED_DATA {
 
 t_config_4 CONFIG_C4;
 t_config_5 CONFIG_C5;
+
+
+#define MIC_PGA_INITVALUE	0x3F	// Microphone PGA = 31.5dB
 
 
 
@@ -254,15 +259,6 @@ void tlv_tickwait(U32 ticks_to_wait) {
 }
 
 
-/*
-void tlv_twiwait(void) {
-  int maxw;
-  for (maxw=5000; (maxw>0)&&(twi_busy()); maxw--) {
-    SLEEP();
-  }
-}
-*/
-
 void tlv_mute_both(void) {
   tlv_writereg(TLV_REG_DACVOLCTRL, 0x0C);	// mute DAC
   tlv_writereg(TLV_REG_ADCVOLFINEADJ, 0x80);	// mute ADC
@@ -357,6 +353,7 @@ int tlv_init(void) {
 
   tlv_writereg(TLV_REG_SOFTRESET, 0x01);
   tlv_tickwait(TLV_SOFTRESET_WAIT);		// wait >1ms before TLC is accessible again
+
   tlv_writereg(TLV_REG_IFACECTRL, 0x4C);	// set DSP-mode, Word+Bitclock outputs
   tlv_writereg(TLV_REG_NDAC, 0x81);		// enable divider, divider=1 (=MASTERCLOCK)
   tlv_writereg(TLV_REG_MDAC, 0x80|TLV_MDIVIDER); // enable MDAC divider, divider=3 or 4
@@ -365,46 +362,48 @@ int tlv_init(void) {
   tlv_writereg(TLV_REG_DOUTOFS, 0x01);		// 1 BCLK offset OUT
   tlv_writereg(TLV_REG_IFACECTL2, 0x05);	// Clock ever from DAC_MOD_CLK (4.096MHz)
   tlv_writereg(TLV_REG_BCLK_NDIV, 0x81);	// BCLK divider active (by 1)
-  // Select processings blocks:
-  tlv_writereg(TLV_REG_DACPBLOCK, 0x04);	// select PRB_R4 for DAC
-  tlv_writereg(TLV_REG_ADCPBLOCK, 0x04);	// select PRB_R4 for ADC/Microphone
-
-  // Setup and enable speaker (testing)
-  tlv_writereg(TLV_REG_HP_DRIVER, 0x9C);	// PowerUP Headphone, Common Voltage 1.8V
-  tlv_writereg(TLV_REG_DACROUTING, 0x40);	// DAC routed to mixer amplifier
-  tlv_writereg(TLV_REG_HPOUTANAVOL, 0x00);	// 0dB Headphone
-  tlv_writereg(TLV_REG_HPOUTDRIVER, 0x36);	// headphone: PGA=6dB, not muted
-  tlv_writereg(TLV_REG_SPEAKERAMP, 0x86);	// PowerUP Class-D Amplifier
-  tlv_writereg(TLV_REG_SPKRANAVOL, 0x80);	// routing Analog Volume Control Output to Speaker
-  tlv_writereg(TLV_REG_SPKRDRIVER, 0x0C);	// Class-D amplifier: 12dB, not muted
-
-  // Microphone PGA and Input Settings (testing)
-  tlv_writereg(TLV_REG_MICBIAS, 0x0A);		// Microphone Bias: 2.5V independent of HeadphoneDET
-  tlv_writereg(TLV_REG_MICPGA, 0x3F);		// Microphone PGA = 31.5dB
-  tlv_writereg(TLV_REG_MIC_P_TERM, 0x40 );	// P-Terminal: MIC1LP with 10kOhm
-  tlv_writereg(TLV_REG_MIC_M_TERM, 0x20 );	// M-Terminal: MIC1LM selected with 20kOhm
-  tlv_writereg(TLV_REG_MIC_INPUTS, 0x00 );	// Input CM Settings
-
-  tlv_tickwait(TLV_SOFTRESET_WAIT);
-
-  // DAC settings:
-  tlv_writereg(TLV_REG_DACPATHSET, 0x94);	// PowerUp DAC (for LEFT channel only)
-  tlv_writereg(TLV_REG_DACVOLUME, 12);		// 6dB digital GAIN
-  tlv_writereg(TLV_REG_SARADCVOLCTRL, 0xC0);	// enable VOL/MICDET-Pin for DAC volume control
-
-  // ADC (Microphone) settings:
-  tlv_writereg(TLV_REG_ADCVOLUMEADJ, 0x40);	// set coarse Gain to 0dB (-12..20dB in 0.5dB Steps)
 
   // init structures (part 2)
-  CONFIG_C4.mic_pga = 0x3F;
-  CONFIG_C4.mic_imp = 0x2A;	// BIAS + Impedance
-  CONFIG_C4.volume  = 0x7F;	// DAC volume knob-controlled
+  CONFIG_C4.mic_pga     = MIC_PGA_INITVALUE;
+  CONFIG_C4.mic_imp     = 0x48;			// BIAS + Impedance
+  CONFIG_C4.volume      = 0x7F;			// DAC volume knob-controlled
+  CONFIG_C4.spkr_out    = -127;			// internal speaker disabled
+  CONFIG_C4.hs_out      = -127;			// handset-speaker disabled (silence)
   CONFIG_C5.agc_maxgain = 119;
   CONFIG_C5.drc_ctrl1   = 0x6F;
   CONFIG_C5.drc_ctrl2   = 0x38;
+  tlv_tickwait(TLV_PLLSTABLE_WAIT);		// wait >10ms
+
+  // Select processings blocks:
+  tlv_writereg(TLV_REG_DACPBLOCK, 0x04);	// select PRB_R4 for DAC
+  tlv_writereg(TLV_REG_ADCPBLOCK, 0x04);	// select PRB_R4 for ADC/Microphone
+  // ADC (Microphone) settings:
+  tlv_writereg(TLV_REG_ADCVOLUMEADJ, 0x40);	// set coarse Gain to 0dB (-12..20dB in 0.5dB Steps)
+  tlv_writereg(TLV_REG_SARADCVOLCTRL, 0xC0);	// enable VOL/MICDET-Pin for DAC volume control
+
+  // Setup DAC-Routing
+  tlv_writereg(TLV_REG_DACROUTING, 0x40);	// DAC routed to mixer amplifier
+
+  // comment: don't init registers twice
+  //tlv_writereg(TLV_REG_HP_DRIVER, 0x1C);	// Headphone, Common Voltage 1.8V
+  //tlv_writereg(TLV_REG_HPOUTANAVOL, 0x7F);	// -78dB Headphone
+  //tlv_writereg(TLV_REG_HPOUTDRIVER, 0x04);	// headphone: PGA=0dB, muted (rst val)
+  //tlv_writereg(TLV_REG_SPEAKERAMP, 0x86);	// PowerUP Class-D Amplifier
+  //tlv_writereg(TLV_REG_SPKRANAVOL, 0x80);	// routing Analog Volume Control Output to Speaker
+  //tlv_writereg(TLV_REG_SPKRDRIVER, 0x0C);	// Class-D amplifier: 12dB, not muted
+
+  // Microphone PGA and Input Settings (testing)
+  tlv_writereg(TLV_REG_MICBIAS, 0x08);		// Microphone Bias: off ("dynamic)
+  tlv_writereg(TLV_REG_MICPGA, MIC_PGA_INITVALUE); // Microphone PGA = 31.5dB
+  tlv_writereg(TLV_REG_MIC_P_TERM, 0x40 );	// P-Terminal: MIC1LP with 10kOhm
+  tlv_writereg(TLV_REG_MIC_M_TERM, 0x10 );	// M-Terminal: MIC1LM with 10kOhm
+  //tlv_writereg(TLV_REG_MIC_INPUTS, 0x00 );	// Input CM Settings
 
   tlvfilter_default_lowpass();			// apply a 240Hz lowpass by default
 
+//  tlv_tickwait(TLV_SOFTRESET_WAIT);
+  tlv_writereg(TLV_REG_DACPATHSET, 0x94);	// PowerUp DAC (for LEFT channel only)
+//tlv_writereg(TLV_REG_DACVOLUME, 12);		// 6dB digital GAIN
   return true;
 }
 
