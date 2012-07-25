@@ -146,9 +146,11 @@ void startup_modeinit(void) {
   if (dgl_capabilities!=0) {
     // check for C0 + C2 config, init RX/TX if AMBE addon configured
     if (is_config_loaded(0xC0) && is_config_loaded(0xC2)) {
-      if (RPTR_is_set(RPTR_AMBEDECODEHF)) { // HF decode to hear it?
+      if (RPTR_is_set(RPTR_AMBEDECODEHF) || dgl_can_encode_by_ptt()) {
+	// HF decode to hear it? Special con: Enable AMBE-RX even PTT is enabled
 	trx_receive();			// set receiving
 	rptr_receive();			// enable receiving
+	RPTR_set(RPTR_AMBEDECODEHF);	// set AMBE-Decoding
 	status_control |= STA_RXENABLE_MASK;
       } // fi from HA active
       if (dgl_can_encode_by_ptt()) {
