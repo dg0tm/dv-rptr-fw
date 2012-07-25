@@ -80,6 +80,7 @@ bool		own_route_correction;
 
 void dgl_inactive(void) {}		// dummy function w/o functionality
 void dgl_activemicptt(void);		// forward
+void dgl_header_wd(void);
 
 
 __inline void dgl_get_lastdata(void) {
@@ -153,9 +154,6 @@ void dgl_transmit_firstvoice(void) {
     rptr_tx_state = RPTRTX_voicedata;
     dgl_FrameCount = 1;
     RPTR_set(DGL_HEADER|DGL_FRAME);
-    if (dgl_micptt_triggered) {
-      dgl_function = dgl_activemicptt;	// enable check-mic-ptt for release
-    }
   } // fi
 }
 
@@ -198,12 +196,11 @@ void dgl_break_current(void) {
 
 
 
-
 void dgl_waitmicptt(void) {
   unsigned int micptt = get_mic_ptt_pin();
   if (dgl_micptt_pinstate != micptt) {
     if (micptt == 0) {			// PLL pulled to LOW (active)?
-      dgl_function = dgl_inactive;	// check nothing, until headertx is finished
+      dgl_function = dgl_header_wd;	// check header, until headertx is finished
       dgl_start_transmit();
       dgl_micptt_triggered = true;
     } else
@@ -224,6 +221,14 @@ void dgl_activemicptt(void) {
     dgl_micptt_triggered = false;
   }
   dgl_micptt_pinstate = micptt;
+}
+
+
+void dgl_header_wd(void) {
+  if (rptr_tx_state == RPTRTX_voicedata)
+    dgl_function = dgl_activemicptt;	// enable check-mic-ptt for release
+  else if (rptr_tx_state <= RPTRTX_idle)
+    dgl_function = dgl_waitmicptt;
 }
 
 
@@ -427,7 +432,7 @@ void cfg_write_c2(const char *config_data) {
   if (config_data[0] & 0x02) RPTR_set(RPTR_AMBEDECODEINET);
   // Control PTT
   dgl_micptt_enabled = (config_data[0] & 0x10) != 0;
-  if (ambe_mode != AMBE_noboard){
+  if (ambe_mode != AMBE_noboard) {
     if (dgl_micptt_enabled) {	// enable mictrophone PTT
       if (dgl_function == dgl_inactive)
 	dgl_function = dgl_waitmicptt;

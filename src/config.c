@@ -23,6 +23,7 @@
  *
  * Report:
  * 2012-06-30	Config C6 added
+ * 2012-07-25	Default 120mVpp modulation
  */
 
 #include "config.h"
@@ -48,7 +49,7 @@
 
 t_config_0 CONFIG_C0 = {
     0x00,			// flags
-    750 * 256 / V_Ref,		// modulation voltage peak-peak ~ 0.75V
+    125 * 256 / V_Ref,		// modulation voltage peak-peak ~ 0.12V
     GMSK_STDTXDELAY<<8		// little endian! Std-Value 120ms
 };
 
