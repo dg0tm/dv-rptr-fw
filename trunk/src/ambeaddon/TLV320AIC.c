@@ -126,8 +126,8 @@ typedef struct PACKED_DATA {
   unsigned char	mic_imp;	// Microphone Impedance Value
   signed   char	adc_gain;	// ADC Gain Value -12..20dB (0.5dB steps)
   unsigned char adc_filter;	// Selection between PB4,PB5 and PB6
-  unsigned char	spkr_out;	// inernal speaker -127 = off; gain 0.5dB steps
-  signed   char hs_out;		// handset speaker -127 = off; gain 0.5dB steps
+  signed   char	spkr_out;	// inernal speaker -128 = off; gain 0.5dB steps
+  signed   char hs_out;		// handset speaker -128 = off; gain 0.5dB steps
   signed   char volume;		// DAC volume (-63.5dB .. +24dB; 0.5dB steps) 0x7F = Poti
   unsigned char dac_filter;	// DAC filter selection
 } t_config_4;
@@ -281,8 +281,9 @@ void tlv_unmute_dac(void) {
 /* tlv_set_adcgain()
  * gain in 0.5dB steps (-12dB..20dB ^= -24..40 allowed)
  */
-char tlv_set_adcgain(signed char gain) {
+signed char tlv_set_adcgain(signed char gain) {
   if (gain > 40) gain = 40; else if (gain < -24) gain = -24;
+  //ADC Channel Volume Control Coarse Gain
   tlv_writereg(TLV_REG_ADCVOLUMEADJ, 0x40 + gain);	// set coarse Gain to value
   return gain;
 }
@@ -316,7 +317,7 @@ void tlv_set_SPKRvolume(signed char vol) {
    tlv_writereg(TLV_REG_SPKRANAVOL, -vol);
    tlv_writereg(TLV_REG_SPKRDRIVER, 0x0C);
   }
-  tlv_writereg(TLV_REG_SPEAKERAMP, 0x06 | ((vol != -127)?0x80:0) );	// PowerUP
+  tlv_writereg(TLV_REG_SPEAKERAMP, 0x06 | ((vol != -128)?0x80:0) );	// PowerUP
 }
 
 
@@ -330,7 +331,7 @@ void tlv_set_HSvolume(signed char vol) {
     tlv_writereg(TLV_REG_HPOUTANAVOL, -vol);
     tlv_writereg(TLV_REG_HPOUTDRIVER, 0x06);	// headphone: PGA=0dB, not muted
   }
-  tlv_writereg(TLV_REG_HP_DRIVER, 0x1C | ((vol != -127)?0x80:0) );	// PowerUP
+  tlv_writereg(TLV_REG_HP_DRIVER, 0x1C | ((vol != -128)?0x80:0) );	// PowerUP
 }
 
 
@@ -345,6 +346,15 @@ int tlv_init(void) {
   // init structures (part 1)
   memset(&CONFIG_C4, 0, sizeof(CONFIG_C4));
   memset(&CONFIG_C5, 0, sizeof(CONFIG_C5));
+  // init structures (part 2)
+  CONFIG_C4.mic_pga     = MIC_PGA_INITVALUE;
+  CONFIG_C4.mic_imp     = 0x48;			// BIAS + Impedance
+  CONFIG_C4.volume      = 0x7F;			// DAC volume knob-controlled
+  CONFIG_C4.spkr_out    = -128;			// internal speaker disabled
+  CONFIG_C4.hs_out      = -128;			// handset-speaker disabled (silence)
+  CONFIG_C5.agc_maxgain = 119;
+  CONFIG_C5.drc_ctrl1   = 0x6F;
+  CONFIG_C5.drc_ctrl2   = 0x38;
   while (TLV_res == TWIbusy) {
     SLEEP();
   }
@@ -363,22 +373,13 @@ int tlv_init(void) {
   tlv_writereg(TLV_REG_IFACECTL2, 0x05);	// Clock ever from DAC_MOD_CLK (4.096MHz)
   tlv_writereg(TLV_REG_BCLK_NDIV, 0x81);	// BCLK divider active (by 1)
 
-  // init structures (part 2)
-  CONFIG_C4.mic_pga     = MIC_PGA_INITVALUE;
-  CONFIG_C4.mic_imp     = 0x48;			// BIAS + Impedance
-  CONFIG_C4.volume      = 0x7F;			// DAC volume knob-controlled
-  CONFIG_C4.spkr_out    = -127;			// internal speaker disabled
-  CONFIG_C4.hs_out      = -127;			// handset-speaker disabled (silence)
-  CONFIG_C5.agc_maxgain = 119;
-  CONFIG_C5.drc_ctrl1   = 0x6F;
-  CONFIG_C5.drc_ctrl2   = 0x38;
-  tlv_tickwait(TLV_PLLSTABLE_WAIT);		// wait >10ms
+  //tlv_tickwait(TLV_PLLSTABLE_WAIT);		// wait >10ms
 
   // Select processings blocks:
   tlv_writereg(TLV_REG_DACPBLOCK, 0x04);	// select PRB_R4 for DAC
   tlv_writereg(TLV_REG_ADCPBLOCK, 0x04);	// select PRB_R4 for ADC/Microphone
   // ADC (Microphone) settings:
-  tlv_writereg(TLV_REG_ADCVOLUMEADJ, 0x40);	// set coarse Gain to 0dB (-12..20dB in 0.5dB Steps)
+  tlv_writereg(TLV_REG_ADCVOLUMEADJ, 0x28);	// set coarse Gain to -12dB
   tlv_writereg(TLV_REG_SARADCVOLCTRL, 0xC0);	// enable VOL/MICDET-Pin for DAC volume control
 
   // Setup DAC-Routing
@@ -402,7 +403,7 @@ int tlv_init(void) {
   tlvfilter_default_lowpass();			// apply a 240Hz lowpass by default
 
 //  tlv_tickwait(TLV_SOFTRESET_WAIT);
-  tlv_writereg(TLV_REG_DACPATHSET, 0x94);	// PowerUp DAC (for LEFT channel only)
+//  tlv_writereg(TLV_REG_DACPATHSET, 0x94);	// PowerUp DAC (for LEFT channel only)
 //tlv_writereg(TLV_REG_DACVOLUME, 12);		// 6dB digital GAIN
   return true;
 }
@@ -429,6 +430,7 @@ void cfg_write_c4(const char *config_data) {
   U8 mic_m_term, mic_p_term;
   memcpy(&CONFIG_C4, config_data, sizeof(CONFIG_C4));
   if (TLV_present) {
+    tlv_writereg(TLV_REG_DACPATHSET, 0x14);	// PowerDown DAC
     // Apply:
     if (CONFIG_C4.mic_pga > 119) CONFIG_C4.mic_pga = 119;
     tlv_writereg(TLV_REG_MICPGA, CONFIG_C4.mic_pga);	// Microphone PGA gain
@@ -489,16 +491,17 @@ void cfg_write_c4(const char *config_data) {
     // page0 access
     CONFIG_C4.adc_gain = tlv_set_adcgain(CONFIG_C4.adc_gain);
 
-    if ((CONFIG_C4.volume != 0x7F) && (CONFIG_C4.volume > 48))
-      CONFIG_C4.volume = 48; // max. +24dB
-
-    tlv_set_DACvolume(CONFIG_C4.volume);
-
     if (CONFIG_C4.adc_filter > 2) CONFIG_C4.adc_filter = 0;
     tlv_writereg(TLV_REG_ADCPBLOCK, 0x04 + CONFIG_C4.adc_filter);
 
     if (CONFIG_C4.dac_filter > 2) CONFIG_C4.dac_filter = 0;
     tlv_writereg(TLV_REG_DACPBLOCK, 0x04 + CONFIG_C4.dac_filter);
+
+    if ((CONFIG_C4.volume != 0x7F) && (CONFIG_C4.volume > 48))
+      CONFIG_C4.volume = 48; // max. +24dB
+
+    tlv_writereg(TLV_REG_DACPATHSET, 0x94);	// PowerUp DAC (for LEFT channel only)
+    tlv_set_DACvolume(CONFIG_C4.volume);
   } // fi present
 }
 
