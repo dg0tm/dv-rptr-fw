@@ -53,7 +53,7 @@ void	tlv_unmute_adc(void);
  * gain in 0.5dB steps (-12dB..20dB ^= -24..40 allowed)
  * returns applied gain
  */
-signed char tlv_set_adcgain(signed char gain);
+void	tlv_set_adcgain(signed char gain);
 
 
 // set MASTER volume (independent), range -127..48, ~ 0.5dB steps
@@ -61,11 +61,11 @@ signed char tlv_set_adcgain(signed char gain);
 void	tlv_set_DACvolume(signed char vol);
 
 // set analog speaker volume (independent), range -127..36, ~ 0.5dB steps
-// -127: turn off ClassD amplifier
+// -128: turn off ClassD amplifier
 void	tlv_set_SPKRvolume(signed char vol);
 
 // set analog headphone volume (independent), range -127..18, ~ 0.5dB steps
-// -127: turn off headphone driver
+// -128: turn off headphone driver
 void	tlv_set_HSvolume(signed char vol);
 
 

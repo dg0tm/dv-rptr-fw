@@ -46,6 +46,7 @@ typedef enum {
 
 
 extern unsigned int RPTR_Flags;
+
 // Receive Flags (checked in handle_hfdata()) Bit 0..8
 #define RPTR_RX_START		0x0001
 #define RPTR_RX_STOP		0x0002
