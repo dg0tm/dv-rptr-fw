@@ -26,6 +26,7 @@
  * 2012-07-18   TWI blocking access (job-buffer full)
  * 2012-07-25	TLV_init() optimized
  * 2012-07-27	shutdown/powerup funktions protect config (filter coeffs) on load
+ * 2012-07-28	ADC-Gain datasheet-error: correct 0x80 for 0dB Gain
  */
 
 #include "TLV320AIC.h"
@@ -313,7 +314,7 @@ void tlv_set_adcgain(signed char gain) {
     if (gain > 40) gain = 40; else if (gain < -24) gain = -24;
     tlv_shutdown_for_config();
     //ADC Channel Volume Control Coarse Gain
-    tlv_writereg(TLV_REG_ADCVOLUMEADJ, 0x40 + gain);	// set coarse Gain to value
+    tlv_writereg(TLV_REG_ADCVOLUMEADJ, 0x80 + gain);	// set coarse Gain to value
     tlv_powerup_after_config();
   }
 }
@@ -409,7 +410,7 @@ int tlv_init(void) {
   tlv_writereg(TLV_REG_DACPBLOCK, 0x04);	// select PRB_R4 for DAC
   tlv_writereg(TLV_REG_ADCPBLOCK, 0x04);	// select PRB_R4 for ADC/Microphone
   // ADC (Microphone) settings:
-  tlv_writereg(TLV_REG_ADCVOLUMEADJ, 0x28);	// set coarse Gain to -12dB
+  tlv_writereg(TLV_REG_ADCVOLUMEADJ, 104);	// set coarse Gain to -12dB
   tlv_writereg(TLV_REG_SARADCVOLCTRL, 0xC0);	// enable VOL/MICDET-Pin for DAC volume control
 
   // Setup DAC-Routing
@@ -522,7 +523,7 @@ void cfg_write_c4(const char *config_data) {
     if (CONFIG_C4.adc_gain > 40) CONFIG_C4.adc_gain = 40;
     else if (CONFIG_C4.adc_gain < -24) CONFIG_C4.adc_gain = -24;
     //ADC Channel Volume Control Coarse Gain
-    tlv_writereg(TLV_REG_ADCVOLUMEADJ, 0x40 + CONFIG_C4.adc_gain);	// set coarse Gain to value
+    tlv_writereg(TLV_REG_ADCVOLUMEADJ, 0x80 + CONFIG_C4.adc_gain);	// set coarse Gain to value
 
     if (CONFIG_C4.adc_filter > 2) CONFIG_C4.adc_filter = 0;
     tlv_writereg(TLV_REG_ADCPBLOCK, 0x04 + CONFIG_C4.adc_filter);
