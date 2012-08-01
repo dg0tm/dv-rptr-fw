@@ -94,6 +94,7 @@
  * 2012-07-21 V1.66e DeadLock on SLEEP() on dgl_init() fixed (release-version only)
  * 2012-07-21 V1.67  C0-Config Flagbit 6 = PTTLOCKED (no external PTT_OUT)
  * 2012-07-24 V1.68  EOT-Command locks Stop-Position for current stream
+ * 2012-08-01 V1.69  TWI blocking functions, used in controls, tlv320aic and rda1846
  *
  * ToDo:
  * - Serial (RS232) port configurable
@@ -120,6 +121,7 @@
 #include "controls.h"
 #include "gpio_func.h"		// GPIO-functions and macros (PTT, LEDs...)
 #include "int_func.h"		// idle_timer()
+#include "twi_func.h"
 
 #include "dac_func.h"
 #include "usb_func.h"
@@ -231,6 +233,9 @@ int main(void) {
   // *** loading permanent stored config data ***
   if (load_internal_eeprom()) {
     load_configs_from_eeprom();
+    while (twi_busy()) {		// wait until all I²C devices are well-configured
+      SLEEP();
+    } // ehliw
     startup_modeinit();			// setup operation mode on power-up
   } // fi
 

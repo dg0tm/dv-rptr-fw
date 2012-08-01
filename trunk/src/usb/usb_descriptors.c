@@ -173,12 +173,8 @@ const S_usb_product_string_descriptor usb_user_product_string_descriptor = {
 };
 
 
-// usb_user_serial_number
-const S_usb_serial_number usb_user_serial_number = {
-  sizeof(S_usb_serial_number),
-  STRING_DESCRIPTOR,
-  USB_SERIAL_NUMBER
-};
+// usb_user_serial_number, filled on request
+S_usb_serial_number usb_user_serial_number;
 
 
 // Inferface0-Bezeichung

@@ -19,7 +19,10 @@
  * You should have received a copy of the GNU General Public License
  * along with this package. If not, see <http://www.gnu.org/licenses/>.
  *
+ * Report:
+ * 2012-08-01	Changed to reg_blocking_write()
  */
+
 
 #include "rda1846.h"
 #include "transceiver.h"
@@ -121,23 +124,21 @@ void reset_rda2_handler(tTWIresult res, unsigned int len) {
 void rda_reset(void) {
   rda_init_reply   = false;
   rda_capabilities = 0;
-  while (reg_write(RDA_TWI_ADR, RDAREG_CTRL, RDAREG_CTRL_RESET, 2, reset_rda_handler)==TWIbusy) {
-    SLEEP();
-  } // ehliw
+  reg_blocking_write(RDA_TWI_ADR, RDAREG_CTRL, RDAREG_CTRL_RESET, 2, reset_rda_handler);
 #ifdef SUPPORT_2ND_IC
-  reg_write(RDA_TWI_2ndADR, RDAREG_CTRL, RDAREG_CTRL_RESET, 2, reset_rda2_handler);
+  reg_blocking_write(RDA_TWI_2ndADR, RDAREG_CTRL, RDAREG_CTRL_RESET, 2, reset_rda2_handler);
 #endif
 }
 
 
 void rda_init_xtal(void) {
-  reg_write(RDA_TWI_ADR, RDAREG_CLKMODE, RDA_04_CLKMODE_VALUE, 2, NULL);
-  reg_write(RDA_TWI_ADR, RDAREG_XTAL, RDA_2B_XTAL_VALUE, 2, NULL);
-  reg_write(RDA_TWI_ADR, RDAREG_ADCLK, RDA_2C_ADCLK_VALUE, 2, NULL);
+  reg_blocking_write(RDA_TWI_ADR, RDAREG_CLKMODE, RDA_04_CLKMODE_VALUE, 2, NULL);
+  reg_blocking_write(RDA_TWI_ADR, RDAREG_XTAL, RDA_2B_XTAL_VALUE, 2, NULL);
+  reg_blocking_write(RDA_TWI_ADR, RDAREG_ADCLK, RDA_2C_ADCLK_VALUE, 2, NULL);
 #ifdef SUPPORT_2ND_IC
-  reg_write(RDA_TWI_2ndADR, RDAREG_CLKMODE, RDA_04_CLKMODE_VALUE, 2, NULL);
-  reg_write(RDA_TWI_2ndADR, RDAREG_XTAL, RDA_2B_XTAL_VALUE, 2, NULL);
-  reg_write(RDA_TWI_2ndADR, RDAREG_ADCLK, RDA_2C_ADCLK_VALUE, 2, NULL);
+  reg_blocking_write(RDA_TWI_2ndADR, RDAREG_CLKMODE, RDA_04_CLKMODE_VALUE, 2, NULL);
+  reg_blocking_write(RDA_TWI_2ndADR, RDAREG_XTAL, RDA_2B_XTAL_VALUE, 2, NULL);
+  reg_blocking_write(RDA_TWI_2ndADR, RDAREG_ADCLK, RDA_2C_ADCLK_VALUE, 2, NULL);
 #endif
 }
 
@@ -147,21 +148,21 @@ void rda_rfoutput(char value) {
   // value = 0x1F ->  8dbm
   // value = 0x18 ->  6dbm
   // value = 0x17 -> -3dbm
-  reg_write(RDA_TWI_ADR, RDAREG_UPPER128, RDAREG_UPPER128_EN, 2, NULL);
-  reg_write(RDA_TWI_ADR, RDAREG_RFOUT&0x7F, value, 2, NULL);
-  reg_write(RDA_TWI_ADR, RDAREG_UPPER128, RDAREG_UPPER128_DIS, 2, NULL);
+  reg_blocking_write(RDA_TWI_ADR, RDAREG_UPPER128, RDAREG_UPPER128_EN, 2, NULL);
+  reg_blocking_write(RDA_TWI_ADR, RDAREG_RFOUT&0x7F, value, 2, NULL);
+  reg_blocking_write(RDA_TWI_ADR, RDAREG_UPPER128, RDAREG_UPPER128_DIS, 2, NULL);
 #ifdef SUPPORT_2ND_IC
-  reg_write(RDA_TWI_2ndADR, RDAREG_UPPER128, RDAREG_UPPER128_EN, 2, NULL);
-  reg_write(RDA_TWI_2ndADR, RDAREG_RFOUT&0x7F, value, 2, NULL);
-  reg_write(RDA_TWI_2ndADR, RDAREG_UPPER128, RDAREG_UPPER128_DIS, 2, NULL);
+  reg_blocking_write(RDA_TWI_2ndADR, RDAREG_UPPER128, RDAREG_UPPER128_EN, 2, NULL);
+  reg_blocking_write(RDA_TWI_2ndADR, RDAREG_RFOUT&0x7F, value, 2, NULL);
+  reg_blocking_write(RDA_TWI_2ndADR, RDAREG_UPPER128, RDAREG_UPPER128_DIS, 2, NULL);
 #endif
 }
 
 
 void rda_update_ctrl(void) {
-  reg_write(RDA_TWI_ADR, RDAREG_CTRL, rda_ctrlreg, 2, NULL);
+  reg_blocking_write(RDA_TWI_ADR, RDAREG_CTRL, rda_ctrlreg, 2, NULL);
 #ifdef SUPPORT_2ND_IC
-  reg_write(RDA_TWI_2ndADR, RDAREG_CTRL, rda_ctrlreg2, 2, NULL);
+  reg_blocking_write(RDA_TWI_2ndADR, RDAREG_CTRL, rda_ctrlreg2, 2, NULL);
 #endif
 }
 
@@ -178,23 +179,23 @@ unsigned int rda_init(void) {
 #ifdef DEBUG
     LED_Set(LED_GREEN);
 #endif
-    reg_write(RDA_TWI_ADR, RDAREG_CTRL, RDAREG_CTRL_PWRON, 2, NULL);
-    reg_write(RDA_TWI_ADR, 0x09, 0x03AC, 2, NULL);	// Set GPIO voltages from 2.7V to VCC
-    reg_write(RDA_TWI_ADR, 0x0B, 0x1A10, 2, NULL);	// nix Ahnung
+    reg_blocking_write(RDA_TWI_ADR, RDAREG_CTRL, RDAREG_CTRL_PWRON, 2, NULL);
+    reg_blocking_write(RDA_TWI_ADR, 0x09, 0x03AC, 2, NULL);	// Set GPIO voltages from 2.7V to VCC
+    reg_blocking_write(RDA_TWI_ADR, 0x0B, 0x1A10, 2, NULL);	// nix Ahnung
     rda_init_xtal();
 //    while (twi_busy()) SLEEP();
     /*
-    reg_write(RDA_TWI_ADR, 0x32, 0x627C, 2, NULL);	// no Ahnung, nicht relevant bei openDV
-    reg_write(RDA_TWI_ADR, 0x33, 0x0AF2, 2, NULL);	// no Ahnung, nicht relevant bei openDV
-    reg_write(RDA_TWI_ADR, 0x47, 0x1AEA, 2, NULL);	// no Ahnung, nicht relevant bei openDV
-    reg_write(RDA_TWI_ADR, 0x4e, 0x293A, 2, NULL);	// no Ahnung, nicht relevant bei openDV
-    reg_write(RDA_TWI_ADR, 0x54, 0x1D40, 2, NULL);	// SQ out sel - but invalid value here
-    reg_write(RDA_TWI_ADR, 0x56, 0x0652, 2, NULL);	// no Ahnung, nicht relevant bei openDV
-    reg_write(RDA_TWI_ADR, 0x71, 0x6C1E, 2, NULL);	// no Ahnung, nicht relevant bei openDV
+    reg_blocking_write(RDA_TWI_ADR, 0x32, 0x627C, 2, NULL);	// no Ahnung, nicht relevant bei openDV
+    reg_blocking_write(RDA_TWI_ADR, 0x33, 0x0AF2, 2, NULL);	// no Ahnung, nicht relevant bei openDV
+    reg_blocking_write(RDA_TWI_ADR, 0x47, 0x1AEA, 2, NULL);	// no Ahnung, nicht relevant bei openDV
+    reg_blocking_write(RDA_TWI_ADR, 0x4e, 0x293A, 2, NULL);	// no Ahnung, nicht relevant bei openDV
+    reg_blocking_write(RDA_TWI_ADR, 0x54, 0x1D40, 2, NULL);	// SQ out sel - but invalid value here
+    reg_blocking_write(RDA_TWI_ADR, 0x56, 0x0652, 2, NULL);	// no Ahnung, nicht relevant bei openDV
+    reg_blocking_write(RDA_TWI_ADR, 0x71, 0x6C1E, 2, NULL);	// no Ahnung, nicht relevant bei openDV
     SLEEP();
     */
     // disable DSP Filters and Pre/Deemphasis:
-    reg_write(RDA_TWI_ADR, RDAREG_FILTER, RDAREG_FILTER_DIS, 2, NULL);
+    reg_blocking_write(RDA_TWI_ADR, RDAREG_FILTER, RDAREG_FILTER_DIS, 2, NULL);
     rda_rfoutput(0x1F);
 //    while (twi_busy()) SLEEP();
     rda_ctrlreg = RDAREG_CTRL_PWRON|RDAREG_CTRL_CAL;
@@ -222,10 +223,10 @@ char rda_set_currfreq(U32 curr_freq) {
   } // fi
   if (rda_rfband != rfband) {
     rda_rfband = rfband;
-    reg_write(RDA_TWI_ADR, RDAREG_RFBAND, rda_rfband, 2, NULL);
+    reg_blocking_write(RDA_TWI_ADR, RDAREG_RFBAND, rda_rfband, 2, NULL);
   } // fi
-  reg_write(RDA_TWI_ADR, RDAREG_FREQ_H, curr_freq>>16, 2, NULL);
-  reg_write(RDA_TWI_ADR, RDAREG_FREQ_L, curr_freq&0xFFFF, 2, NULL);
+  reg_blocking_write(RDA_TWI_ADR, RDAREG_FREQ_H, curr_freq>>16, 2, NULL);
+  reg_blocking_write(RDA_TWI_ADR, RDAREG_FREQ_L, curr_freq&0xFFFF, 2, NULL);
 
   if (rda_ctrlreg != ctrlreg_save) {
     rda_ctrlreg = ctrlreg_save;

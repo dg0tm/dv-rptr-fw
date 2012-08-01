@@ -167,10 +167,9 @@
 }
 
 
-#define USB_SN_LENGTH		5
 
 #if (FIRMWAREVERSION&0xF)
-#define USB_SERIAL_NUMBER	{ \
+#define USB_FIRMWARE_VERSION	{ \
   Usb_unicode(((char)(FIRMWAREVERSION>>12)+'0')),\
   Usb_unicode('.'),\
   Usb_unicode(((char)((FIRMWAREVERSION>>8)&0xF)+'0')),\
@@ -178,7 +177,7 @@
   Usb_unicode(((char)(FIRMWAREVERSION&0xF)+'a'-1)) \
 }
 #else
-#define USB_SERIAL_NUMBER	{ \
+#define USB_FIRMWARE_VERSION	{ \
   Usb_unicode(((char)(FIRMWAREVERSION>>12)+'0')),\
   Usb_unicode('.'),\
   Usb_unicode(((char)((FIRMWAREVERSION>>8)&0xF)+'0')),\
@@ -409,6 +408,9 @@ S_usb_product_string_descriptor;
 
 //_____ U S B   S E R I A L   N U M B E R   D E S C R I P T O R _____________
 
+#define USB_SN_LENGTH		8
+
+
 //! struct usb_st_serial_number
 typedef
 #if (defined __ICCAVR32__)
@@ -487,7 +489,7 @@ extern const S_usb_user_configuration_descriptor  usb_conf_desc_fs;
 extern const S_usb_user_configuration_descriptor  usb_conf_desc_hs;
 extern const S_usb_manufacturer_string_descriptor usb_user_manufacturer_string_descriptor;
 extern const S_usb_product_string_descriptor      usb_user_product_string_descriptor;
-extern const S_usb_serial_number                  usb_user_serial_number;
+extern       S_usb_serial_number                  usb_user_serial_number;
 extern const S_usb_language_id                    usb_user_language_id;
 
 extern const S_usb_interface_str_descr		  usb_user_interface0_str_descr;

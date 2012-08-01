@@ -48,7 +48,7 @@ void dac_twidone(tTWIresult TWIres, unsigned int transfered_bytes) {
 
 
 void set_dac_power_mode(unsigned char mde) {
-  reg_write(TWI_DAC_ADR, 0xF0, mde, 1, NULL);
+  reg_blocking_write(TWI_DAC_ADR, 0xF0, mde, 1, NULL);
 }
 
 
@@ -61,7 +61,7 @@ void set_chA_level(unsigned char level) {
 #ifdef DVRPTR
   chA_lvl.reg = 0x40 | (level >> 4);	// 8bits to DAC-Out B (0x10)
   chA_lvl.value = level << 4;
-  twi_write(TWI_DAC_ADR, (const char *)&chA_lvl.reg, 2, dac_twidone);
+  twi_blocking_write(TWI_DAC_ADR, (const char *)&chA_lvl.reg, 2, dac_twidone);
 #endif
 }
 
@@ -70,7 +70,7 @@ void set_chB_level(unsigned char level) {
 #ifdef DVRPTR
   chB_lvl.reg = 0x50 | (level >> 4);	// 8bits to DAC-Out B (0x10)
   chB_lvl.value = level << 4;
-  twi_write(TWI_DAC_ADR, (const char *)&chB_lvl.reg, 2, dac_twidone);
+  twi_blocking_write(TWI_DAC_ADR, (const char *)&chB_lvl.reg, 2, dac_twidone);
 #endif
 }
 

@@ -28,6 +28,7 @@
  * Report:
  * 2011-09-29	Fix a bug (wrong memcpy source @ bufferwrap) in cdc_copyblock().
  * 2012-07-14	BugFix 64Byte EP Fifo Wrap Bug
+ * 2012-08-01	USB Serial Number build from Bootloader-SN in usb_init()
  */
 
 //#define NOTIFY_USBHOST
@@ -52,6 +53,8 @@
 #include "../hardware/bf_func.h"
 #include "../common/bf_cmd.h"
 #endif
+
+#include "usb_descriptors.h"
 
 #include <string.h>
 
@@ -156,6 +159,20 @@ __inline void usb_setconfig_fct(void) {
 
 
 void usb_init(void) {
+  int i;
+  U8 *sn = (U8 *)SERIALNUMBER_ADDRESS;
+  // fill out SN from Bootloader
+  usb_user_serial_number.bLength = sizeof(usb_user_serial_number);
+  usb_user_serial_number.bDescriptorType = STRING_DESCRIPTOR;
+  for (i=0; i<USB_SN_LENGTH; i+=2) {
+    char z = *sn >> 4;
+    if (z < 9) z += '0'; else z += 'A'-10;
+    usb_user_serial_number.wstring[i] = Usb_unicode(z);
+    z = *sn & 0x0F;
+    if (z < 9) z += '0'; else z += 'A'-10;
+    usb_user_serial_number.wstring[i+1] = Usb_unicode(z);
+    sn++;
+  } // rof
   AVR32_USBB.usbcon = AVR32_USBB_UIMOD_MASK | AVR32_USBB_OTGPADE_MASK;
   cdc_timeout_fct = NULL;
   usb_handler = usb_wait_for_connect;
