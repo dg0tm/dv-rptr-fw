@@ -31,6 +31,7 @@
  * 2012-01-28  JA  BugFix: EEread-NAK generates no NAK-Int-Request
  * 2012-01-29  JA  reg_read() implemented
  * 2012-06-19  JA  reset STATUS register (clears NAK of previous reads)
+ * 2012-08-01  JA  "blocking" write functions added
  *
  */
 
@@ -38,6 +39,7 @@
 #include "twi_func.h"
 #include "hw_defs.h"
 #include "intc.h"
+#include "gpio_func.h"	// used fpr SLEEP() macro only
 
 #include "compiler.h"
 
@@ -72,7 +74,8 @@ typedef struct {
 
 
 ttwijob	TWIjobs[TWIQueueSize];		// Queue für I²C I/O
-U32	TWIrjob, TWIwjob, TWIcjob;
+volatile U32 TWIrjob;
+U32	TWIwjob, TWIcjob;
 Bool	twi_running;			// used to pause i/o
 Bool	twi_idle;			// true, if no job processed
 U8	twi_jobrecursion;
@@ -267,6 +270,16 @@ void twi_acknewjob(void) {
 } // fi idle
 
 
+ttwijob *twi_blocking_getjob() {
+  ttwijob *freejob;
+  do {
+    freejob = twi_getnewjob();
+    if (freejob != NULL) return freejob;
+    SLEEP();
+  } while (true);
+}
+
+
 tTWIresult twi_write(unsigned char adr, const char *data, unsigned int len, twi_handler RetFunc) {
   ttwijob *newjob = twi_getnewjob();
   if ( newjob == NULL ) return TWIbusy;
@@ -277,6 +290,17 @@ tTWIresult twi_write(unsigned char adr, const char *data, unsigned int len, twi_
   newjob->func = RetFunc;
   twi_acknewjob();	// Acknowledge job
   return TWIok;
+}
+
+
+void twi_blocking_write(unsigned char adr, const char *data, unsigned int len, twi_handler RetFunc) {
+  ttwijob *newjob = twi_blocking_getjob();
+  newjob->cmd  = TWIwrite;
+  newjob->device = adr;
+  newjob->buffer = data;
+  newjob->len  = len;
+  newjob->func = RetFunc;
+  twi_acknewjob();	// Acknowledge job
 }
 
 
@@ -323,8 +347,8 @@ tTWIresult ee_read(unsigned int adr, char *dest, unsigned int len, twi_handler R
 
 tTWIresult reg_write(unsigned char adr, unsigned char reg, unsigned int value, char reg_size, twi_handler RetFunc) {
   ttwijob *newjob = twi_getnewjob();
-  if ( newjob == NULL ) return TWIbusy;
   if ((reg_size==0)||(reg_size>4)) return TWIerror;
+  if ( newjob == NULL ) return TWIbusy;
   value <<= (4-reg_size)*8;		// shift bytes to high (big endian)
   newjob->cmd    = REGwrite;
   newjob->device = adr;
@@ -334,6 +358,21 @@ tTWIresult reg_write(unsigned char adr, unsigned char reg, unsigned int value, c
   newjob->func   = RetFunc;
   twi_acknewjob();	// Acknowledge job
   return TWIok;
+}
+
+
+void reg_blocking_write(unsigned char adr, unsigned char reg, unsigned int value, char reg_size, twi_handler RetFunc) {
+  ttwijob *newjob;
+  if ((reg_size==0)||(reg_size>4)) return;
+  newjob = twi_blocking_getjob();
+  value <<= (4-reg_size)*8;		// shift bytes to high (big endian)
+  newjob->cmd    = REGwrite;
+  newjob->device = adr;
+  newjob->addr   = reg;
+  newjob->buffer = (char *)value;
+  newjob->len    = reg_size;
+  newjob->func   = RetFunc;
+  twi_acknewjob();	// Acknowledge job
 }
 
 

@@ -27,6 +27,7 @@
  * 2012-07-25	TLV_init() optimized
  * 2012-07-27	shutdown/powerup funktions protect config (filter coeffs) on load
  * 2012-07-28	ADC-Gain datasheet-error: correct 0x80 for 0dB Gain
+ * 2012-08-01	using new TWI blocking functions + ADC shutdown on C6 writing only
  */
 
 #include "TLV320AIC.h"
@@ -213,22 +214,14 @@ void init_pll1708(void) {
 
 
 
-void tlv_blocking_writereg(unsigned char regno, unsigned char value) {
-  tTWIresult r;
-  do {
-    r = reg_write(TLV_TWI_ADR, regno, value, 1, NULL);
-    if (r==TWIbusy) SLEEP();
-  } while (r==TWIbusy);
-}
-
 
 void tlv_writereg(unsigned short reg, unsigned char value) {
   if (TLV_present) {
     if (MSB(reg) != TLV_page) {
       TLV_page = MSB(reg);
-      tlv_blocking_writereg(TLV_REG_PAGECTRL, TLV_page);
+      reg_blocking_write(TLV_TWI_ADR, TLV_REG_PAGECTRL, TLV_page, 1, NULL);
     } // fi change page
-    tlv_blocking_writereg(LSB(reg), value);
+    reg_blocking_write(TLV_TWI_ADR, LSB(reg), value, 1, NULL);
   } // fi fond HW
 }
 
@@ -285,20 +278,32 @@ void tlv_unmute_dac(void) {
 }
 
 
-void tlv_shutdown_for_config(void) {
-  tlv_writereg(TLV_REG_DACVOLCTRL, 0x0C);	// mute DAC
-  tlv_writereg(TLV_REG_DACPATHSET, 0x14);	// PowerDown DAC
+/* tlv_configure_xxx() functions
+ * Power-Down / Power-Up Functions need for setting filter coefficients
+ */
+
+void tlv_configure_adc(void) {
   tlv_writereg(TLV_REG_ADCVOLFINEADJ, 0x80);	// mute ADC
   tlv_writereg(TLV_REG_ADC_MIC, 0x00);		// PowerDown ADC
 }
 
 
-void tlv_powerup_after_config(void) {
-  tlv_writereg(TLV_REG_DACPATHSET, 0x94);	// PowerUp DAC (for LEFT channel only)
+void tlv_configure_adc_fin(void) {
   if (TLV_ADCactive) {
     tlv_writereg(TLV_REG_ADC_MIC, 0x80);	// PowerUp ADC (SoftStepping enabled, AnalogMic)
     tlv_writereg(TLV_REG_ADCVOLFINEADJ, 0x00);	// unmute ADC
   } // fi
+}
+
+
+void tlv_configure_dac(void) {
+  tlv_writereg(TLV_REG_DACVOLCTRL, 0x0C);	// mute DAC
+  tlv_writereg(TLV_REG_DACPATHSET, 0x14);	// PowerDown DAC
+}
+
+
+void tlv_configure_dac_fin(void) {
+  tlv_writereg(TLV_REG_DACPATHSET, 0x94);	// PowerUp DAC (for LEFT channel only)
   if (TLV_DACactive) {
     tlv_writereg(TLV_REG_DACVOLCTRL, 0x04);	// unmute DAC
   } // fi
@@ -312,10 +317,8 @@ void tlv_powerup_after_config(void) {
 void tlv_set_adcgain(signed char gain) {
   if (TLV_present) {
     if (gain > 40) gain = 40; else if (gain < -24) gain = -24;
-    tlv_shutdown_for_config();
     //ADC Channel Volume Control Coarse Gain
     tlv_writereg(TLV_REG_ADCVOLUMEADJ, 0x80 + gain);	// set coarse Gain to value
-    tlv_powerup_after_config();
   }
 }
 
@@ -435,7 +438,7 @@ int tlv_init(void) {
 
 //  tlv_tickwait(TLV_SOFTRESET_WAIT);
 //  tlv_writereg(TLV_REG_DACPATHSET, 0x94);	// PowerUp DAC (for LEFT channel only)
-//tlv_writereg(TLV_REG_DACVOLUME, 12);		// 6dB digital GAIN
+//  tlv_writereg(TLV_REG_DACVOLUME, 12);	// 6dB digital GAIN
   return true;
 }
 
@@ -461,7 +464,6 @@ void cfg_write_c4(const char *config_data) {
   U8 mic_m_term, mic_p_term;
   memcpy(&CONFIG_C4, config_data, sizeof(CONFIG_C4));
   if (TLV_present) {
-    tlv_shutdown_for_config();
     // Apply:
     if (CONFIG_C4.mic_pga > 119) CONFIG_C4.mic_pga = 119;
     tlv_writereg(TLV_REG_MICPGA, CONFIG_C4.mic_pga);	// Microphone PGA gain
@@ -534,7 +536,7 @@ void cfg_write_c4(const char *config_data) {
     if ((CONFIG_C4.volume != 0x7F) && (CONFIG_C4.volume > 48))
       CONFIG_C4.volume = 48; // max. +24dB
 
-    tlv_powerup_after_config();
+    tlv_writereg(TLV_REG_DACPATHSET, 0x94);	// PowerUp DAC (for LEFT channel only)
     tlv_set_DACvolume(CONFIG_C4.volume);
   } // fi present
 }
@@ -551,7 +553,6 @@ void cfg_write_c5(const char *config_data) {
   CONFIG_C5.drc_ctrl1 &= 0x7F;	// Dynamic Range Compression
   CONFIG_C5.drc_ctrl2 &= 0x7F;
   if (TLV_present) {
-    tlv_shutdown_for_config();
     tlv_writereg(TLV_REG_AGC_CTRL1, CONFIG_C5.agc_ctrl1);
     tlv_writereg(TLV_REG_AGC_CTRL2, CONFIG_C5.agc_ctrl2);
     tlv_writereg(TLV_REG_AGC_MAXGAIN, CONFIG_C5.agc_maxgain);
@@ -562,7 +563,6 @@ void cfg_write_c5(const char *config_data) {
     tlv_writereg(TLV_REG_DRC_CTRL1, CONFIG_C5.drc_ctrl1);
     tlv_writereg(TLV_REG_DRC_CTRL2, CONFIG_C5.drc_ctrl2);
     tlv_writereg(TLV_REG_DRC_CTRL3, CONFIG_C5.drc_ctrl3);
-    tlv_powerup_after_config();
   } // fi present
 }
 
@@ -677,7 +677,7 @@ char *cfg_read_c6(char *config_buffer) {
 
 void cfg_write_c6(const char *config_data) {
   int i;
-  tlv_shutdown_for_config();
+  tlv_configure_adc();
   for (i=0; i<3; i++) {
     LSB(CONFIG_C6.FirstOrderIIR[i]) = *config_data++;
     MSB(CONFIG_C6.FirstOrderIIR[i]) = *config_data++;
@@ -708,7 +708,7 @@ void cfg_write_c6(const char *config_data) {
     MSB(CONFIG_C6.BQBlockE[i]) = *config_data++;
   }
   tlvfilter_load_bqfir(4, CONFIG_C6.BQBlockE);
-  tlv_powerup_after_config();
+  tlv_configure_adc_fin();
 }
 
 
