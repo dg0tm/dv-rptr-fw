@@ -85,7 +85,7 @@ void init_ambe_ssc(void);
 
 void	ambe_setup(void);		// Sets Buffer-Parameter and Vars once after reset
 void	ambe_init(void);
-void	ambe_powerdown(void);	// Kontrolliertes Herunterfahren des AMBE
+void	ambe_powerdown(void);		// Kontrolliertes Herunterfahren des AMBE
 void	ambe_encode(void);
 void	ambe_decode(void);
 void	ambe_standby(void);
@@ -97,7 +97,7 @@ tambestate ambe_getstate(void);
 tambestate ambe_getnewstate(void);	// nur neue Zustände, sonst "noinit"
 
 
-int	ambe_packetcount(void);	// gibt Paketzähler zurück
+int	ambe_packetcount(void);		// gibt Paketzähler zurück
 
 void	ambe_set_vollin(unsigned char volume);	// direct value for AMBE volume byte
 
@@ -120,7 +120,5 @@ void	ambe_putvoice(unsigned char *voicedat);
 
 void	ambe_getsilence(unsigned char *dest);
 
-// ToDo:
-// void set_bitslipfkt(tbits_left_fkt bitfunc, int period, int pos);
 
 #endif

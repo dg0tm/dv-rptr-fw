@@ -24,6 +24,9 @@
  * along with this package. If not, see <http://www.gnu.org/licenses/>.
  *
  *
+ * Report:
+ * 2012-08-07	Rework AMBE-Timer Handling on Encode/Decode Calls
+ *
  * ToDo:
  * -Check Power-Down vs. Hard-Reset Current
  * -Slip-Control
@@ -182,19 +185,26 @@ INTERRUPT_FUNC ambe_timer_TurnOff(void) {	// Ende Gelände: AMBE ausschalten
 }
 
 
+static __inline void ambe_setboottimer(void) {
+  ambe_timer_setms(AMBE_TIMETOBOOT);		// gib AMBE 135ms zum Booten (124.05ms nötig)
+  INTC_register_interrupt(ambe_timer_TurnOff, AMBE_TIMER_IRQ, AMBE_TIMER_PRIO);
+  ambe_timer_start();
+}
+
+
 INTERRUPT_FUNC ambe_timer_TurnOn(void) {	// AMBE wieder einschalten
   ambe_timer_stop();				// TurnOff & acknowledge INT
   ambe_start();
 }
 
 
-INTERRUPT_FUNC ambe_timer_Sleep(void) {	// Abschalt-Timer für wartenden AMBE
-  AMBE_TIMER.sr;	// Read Status to acknowledge INT
+INTERRUPT_FUNC ambe_timer_Sleep(void) {		// Abschalt-Timer für wartenden AMBE
+  AMBE_TIMER.sr;				// Read Status to acknowledge INT
   ambe_idle_count++;
   if (ambe_input.Ctrl1&AMBE_PWRDOWNID) {	// Power-Down gesetzt
     tambestate beforestop = AMBEstate;
     ambe_stop();
-    if (beforestop==AMBEbooting) {	// Sonderfall -> sofort wieder einschalten
+    if (beforestop==AMBEbooting) {		// Sonderfall -> sofort wieder einschalten
       INTC_register_interrupt(ambe_timer_TurnOn, AMBE_TIMER_IRQ, AMBE_TIMER_PRIO);
       ambe_timer_setms(AMBE_TIMETORESET);
       ambe_timer_start();
@@ -203,15 +213,15 @@ INTERRUPT_FUNC ambe_timer_Sleep(void) {	// Abschalt-Timer für wartenden AMBE
     ambe_input.Ctrl1 = AMBE_PWRDOWNID;
     ambe_start_transmit();
     AMBEstate = AMBEpowerdown;
-    eic_disableint(AMBE_EPR_INT);	// Keine weiteren AMBE-Pakete verarbeiten
+    eic_disableint(AMBE_EPR_INT);		// Keine weiteren AMBE-Pakete verarbeiten
   } // fi
 }
 
 
 INTERRUPT_FUNC ambe_timer_Decode(void) { // Decode-Timer Int (startet, wenn keine neuen Pakete eintreffen)
-  AMBE_TIMER.sr;	// Read Status to acknowledge INT
+  AMBE_TIMER.sr;				// Read Status to acknowledge INT
   ambe_timer_setms(20);
-  if (ambe_dtmf_count > 0) {		// DTMF statt Decoding
+  if (ambe_dtmf_count > 0) {			// DTMF statt Decoding
     ambe_input.Ctrl2 &= ~AMBE_CTRL2_SL_MASK;
     if (LSB(ambe_input.DtmfCtrl) == 0xFF) {	// Gap
       ambe_input.Ctrl2 |= AMBE_CTRL2_SL_MASK;	// Kein RX vom AMBE!
@@ -250,7 +260,7 @@ INTERRUPT_FUNC ambe_rxfinish_int(void) {
 
     if (ambe_output.Ctrl2&AMBE_CTRL2_EE_MASK) {	// Arbeitet als Decoder oder DTMF-Geber?
 
-      if (ambe_dtmf_count>0) {			// DTMF statt Decoding
+      if (ambe_dtmf_count > 0) {		// DTMF statt Decoding
  	ambe_dtmf_count--;
         ambe_restart_timer();			// TimeOut-Timer zurücksetzen
 	if ((ambe_input.DtmfCtrl&0xF0)==0x80) {	// one of the 16 defined tones
@@ -281,7 +291,7 @@ INTERRUPT_FUNC ambe_rxfinish_int(void) {
 	  } // hctiws
 	} // fi Ende
 	ambe_start_transmit();
-      } else if ( (ambe_input.Ctrl1&AMBE_CTRL1_CNI_MASK) == 0 ) {
+      } else if ( (ambe_input.Ctrl1&AMBE_CTRL1_CNI_MASK) == 0 ) {	// normal Decoding
 	BitErrorRate = ambe_output.BER;
       } // fi fresh Voice
 
@@ -297,6 +307,7 @@ INTERRUPT_FUNC ambe_rxfinish_int(void) {
     } // esle
 
   } else {	// RateInfo!=NONE
+    ambe_timer_stop();				// Verhindere Timer-Trigger durch RC-Ä
     // Vergleiche Rate von zuletzt gesendeten Paket:
     if ( (!memcmp(ambe_input.Rate, ambe_output.Rate, sizeof(ambe_output.Rate))) && \
       ((ambe_input.Ctrl2^ambe_output.Ctrl2)&AMBE_CTRL2_EE_MASK) ) {
@@ -318,7 +329,6 @@ INTERRUPT_FUNC ambe_rxfinish_int(void) {
     } else {
       INTC_register_interrupt(ambe_timer_Decode, AMBE_TIMER_IRQ, AMBE_TIMER_PRIO);
     }
-    ambe_timer_stop();				// Verhindere Timer-Trigger durch RC-Ä
     ambe_timer_setms(AMBE_FRAMETIMEOUT);	// TimeOut, wenn kein Pkt nach 24ms da ist
     ambe_timer_start();
   } // esle Rate/Mode not set
@@ -340,7 +350,7 @@ INTERRUPT_FUNC ambe_ssc_int(void) {
       memcpy(VoiceBuf, ambe_output.Data, AMBE_USEDDATA);
     } // fi Frame-Header
   } // fi RXRDY
-  if (Status&AVR32_SSC_SR_TXEMPTY_MASK) { // Finish Transmitting?
+  if (Status&AVR32_SSC_SR_TXEMPTY_MASK) { 	// Finish Transmitting?
     AVR32_SSC.idr = AVR32_SSC_TXEMPTY_MASK;	// Turn Off IRQ Event
     AVR32_SSC.cr  = AVR32_SSC_CR_TXDIS_MASK;	// Turn Off Transmitter
   } // fi txempty
@@ -396,13 +406,12 @@ static void ambe_start(void) {
   tambestate startstate = AMBEstate;
   if ((startstate==AMBEnoinit)||(startstate > AMBEbooting))
     return;
+  ambe_timer_stop();
   AMBEstate = AMBEbooting;
   if (startstate==AMBEoff) {
     ambe_idle_count    = 0;
     ambe_rxframe_count = 0;
-    ambe_timer_setms(AMBE_TIMETOBOOT);		// gib AMBE 135ms zum Booten (124.05ms nötig)
-    INTC_register_interrupt(ambe_timer_TurnOff, AMBE_TIMER_IRQ, AMBE_TIMER_PRIO);
-    ambe_timer_start();
+    ambe_setboottimer();
     ambe_set_reset();				// Starts AMBE2020 from Reset
     eic_clrline(AMBE_EPR_INT);
     eic_reenableint(AMBE_EPR_INT);		// Activate EPR-Int (sense next packet rdy)
@@ -420,6 +429,8 @@ static void ambe_start(void) {
 
 void ambe_stop(void) {
   eic_disableint(AMBE_EPR_INT);
+  AMBEstate = AMBEpowerdown;
+  tlv_mute_both();
   AVR32_SSC.idr = 0xFFFF;		// SSC Ints off
   AVR32_PDCA.channel[AMBE_CHANNEL0].idr = AVR32_PDCA_IDR_TERR_MASK|AVR32_PDCA_IDR_TRC_MASK|AVR32_PDCA_IDR_RCZ_MASK;
   AVR32_PDCA.channel[AMBE_CHANNEL1].idr = AVR32_PDCA_IDR_TERR_MASK|AVR32_PDCA_IDR_TRC_MASK|AVR32_PDCA_IDR_RCZ_MASK;
@@ -432,7 +443,6 @@ void ambe_stop(void) {
   ambe_dtmf_count    = 0;
   ambe_idle_count    = 0;
   AMBEstate = AMBEoff;
-  tlv_mute_both();
 }
 
 
@@ -451,16 +461,16 @@ void ambe_standby(void) {
 
 void ambe_encode(void) {
   if ((AMBEstate != AMBEencoding) && (AMBEstate != AMBEnoinit)) {
-    ambe_input.Ctrl1 = AMBE_OPERATEID;
-    if (ambe_dtmf_count < 2)
-      LSB(ambe_input.DtmfCtrl) = 0xFF;
-    LSB(ambe_input.Ctrl2) = AMBE_CTRL2_ENCODE;
+    ambe_idle_count = 0;
+    //ambe_rxframe_count = 0;
+    ambe_input.Ctrl1         = AMBE_OPERATEID;
+    LSB(ambe_input.Ctrl2)    = AMBE_CTRL2_ENCODE;
+    LSB(ambe_input.DtmfCtrl) = 0xFF;
     VoicePktPtr = (char *)SilenceFrame;
     if ((AMBEstate == AMBEoff) || (AMBEstate == AMBEpowerdown))
       ambe_start();
     else if (AMBEstate > AMBEbooting) {
       ambe_start_transmit();			// AMBE aufwecken
-      ambe_idle_count = 0;
     }
   } // fi
 }
@@ -468,14 +478,13 @@ void ambe_encode(void) {
 
 void ambe_decode(void) {
   if ((AMBEstate != AMBEdecoding) && (AMBEstate != AMBEnoinit)) {
+    ambe_idle_count = 0;
+    //ambe_rxframe_count = 0;
     ambe_input.Ctrl1 = AMBE_OPERATEID|AMBE_CTRL1_CNI_MASK;	// CNI on
-    LSB(ambe_input.Ctrl2) = 0;	// Decoding, Set both rates
-    if (ambe_dtmf_count < 2)
-      LSB(ambe_input.DtmfCtrl) = 0xFF;
+    LSB(ambe_input.Ctrl2)    = 0x00;		// Decoding, Set both rates
+    LSB(ambe_input.DtmfCtrl) = 0xFF;
     if ((AMBEstate == AMBEoff) || (AMBEstate == AMBEpowerdown))
       ambe_start();
-    else
-      ambe_idle_count = 0;
   } // fi allowed states
 }
 
@@ -500,6 +509,7 @@ void ambe_getvoice(unsigned char *dest) {
   ambe_idle_count = 0;
   ambe_newencoded = false;
 }
+
 
 __inline int ambe_have_new_encoded(void) {
   return ambe_newencoded;
