@@ -249,6 +249,7 @@ void update_status(void) {
 #define SFC_DGL_VOLUMECTRL	0x41	// controls volume (selector + value 8bit)
 
 #define SFC_DGL_ADCFILTER	0x44	// Load a FilterBlock
+#define SFC_AMBE_ERRREG		0x4F	// Dongle / AMBE Error Register
 
 
 #define SFC_DEFAULT_CONFIGS	0x80	// load all stored configs from EEProm
@@ -275,6 +276,8 @@ void sfc_twi_wrt_return(tTWIresult res, unsigned int len) {
   sfc_async_tx(async_reply.data, anslen);
 }
 
+
+extern U32 ambe_operror_cnt;
 
 // handle_special_func_cmd()
 // a subset of commands / functions (not often used) are accessed by main-command 0x1F
@@ -381,6 +384,14 @@ void handle_special_func_cmd(int len) {
 	break;
       } // hctiws kind/no of filter
     }
+    break;
+  case SFC_AMBE_ERRREG:
+    answer.head.len = 6;
+    answer.data[PKT_PARAM_IDX]   = SFC_AMBE_ERRREG;
+    answer.data[PKT_PARAM_IDX+1] = LSB0W(ambe_operror_cnt);
+    answer.data[PKT_PARAM_IDX+2] = LSB1W(ambe_operror_cnt);
+    answer.data[PKT_PARAM_IDX+3] = LSB2W(ambe_operror_cnt);
+    answer.data[PKT_PARAM_IDX+4] = LSB3W(ambe_operror_cnt);
     break;
   case SFC_DEFAULT_CONFIGS:
     if (have_configs()) {

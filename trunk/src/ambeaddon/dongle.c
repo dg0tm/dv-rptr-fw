@@ -74,6 +74,8 @@ tfunction	dgl_function;
 
 bool		own_route_correction;
 
+unsigned int	ambe_operror_cnt;
+
 /*! \name DSTAR Handler Functions
  */
 //! @{
@@ -145,6 +147,7 @@ void dgl_transmit_firstvoice(void) {
     rptr_transmit_eotpattern();
     gmsk_set_reloadfunc(dgl_stopped);
     rptr_tx_state = RPTRTX_eot;
+    ambe_operror_cnt++;
   } else if (rptr_tx_state==RPTRTX_idle) {
     dgl_transmit_stopframe();
   } else {
@@ -289,6 +292,7 @@ unsigned int dgl_init(void) {
   dgl_function = dgl_inactive;		// a dummy function, if no AMBE addon board found
   dgl_micptt_enabled = false;
   ambe_mode    = AMBE_noboard;
+  ambe_operror_cnt = 0;
   ambe_setup();				// setup memory structures for SSC I/O needed by AMBE
   dgl_micptt_pinstate = get_mic_ptt_pin();
   if (tlv_init()) {			// if auto-detect a AMBE addon board...
