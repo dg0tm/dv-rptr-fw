@@ -23,6 +23,7 @@
  * 2012-04-25	Add "55 55 55" as Slowdata in the last voice packet (compatibility)
  * 2012-05-22	Autocorrection RPT1/2 works now
  * 2012-06-18	DGL_HEADER appears now when first voice packet ready (better timing)
+ * 2012-08-08	MicrophonePTT function debounced, PTT can't break Flag C2[0], Bit2
  */
 
 
@@ -59,8 +60,13 @@ tds_header dongle_header = {		// header used in DONGLE transmissions
 
 bool		dgl_micptt_enabled;
 
-unsigned int	dgl_micptt_pinstate;
+unsigned int	dgl_micptt_pinreg;			// PinInput shift register
 bool		dgl_micptt_triggered;
+
+#define		DGL_MICPTT_INIT	0xFFFFFFFF
+#define		DGL_MICPTT_ON	0x80000000
+#define		DGL_MICPTT_OFF	0x7FFFFFFF
+
 
 unsigned int	dgl_HeaderBS[DSTAR_HEADERBSBUFSIZE];	// DStar header bitstream
 
@@ -102,9 +108,6 @@ void dgl_stopped(void) {
   RPTR_set(DGL_EOT);
   LED_Clear(LED_RED);
   rptr_receive();		// reenable receiving
-  if (!dgl_micptt_enabled) {	// if disabled, inactivate it
-    dgl_function = dgl_inactive;
-  }
   rptr_tx_state = RPTRTX_idle;
 }
 
@@ -195,40 +198,50 @@ void dgl_break_current(void) {
 }
 
 
+void dgl_transmit_start(void) {
+  gmsk_set_reloadfunc(dgl_transmit_header);
+  rptr_transmit_fullpreamble();
+  rptr_tx_state = RPTRTX_preamble;
+}
+
+
 //! @}
 
 
+void dgl_sample_micptt(void) {
+  dgl_micptt_pinreg <<= 1;
+  if (get_mic_ptt_pin()) dgl_micptt_pinreg |= 1;
+  if (dgl_micptt_pinreg == DGL_MICPTT_ON)
+    dgl_micptt_triggered = true;
+  else if (dgl_micptt_pinreg == DGL_MICPTT_OFF)
+    dgl_micptt_triggered = false;
+}
+
 
 void dgl_waitmicptt(void) {
-  unsigned int micptt = get_mic_ptt_pin();
-  if (dgl_micptt_pinstate != micptt) {
-    if (micptt == 0) {			// PLL pulled to LOW (active)?
-      dgl_function = dgl_header_wd;	// check header, until headertx is finished
-      dgl_start_transmit();
-      dgl_micptt_triggered = true;
-    } else
-      dgl_micptt_triggered = false;
-    dgl_micptt_pinstate = micptt;
-  } // fi toggle PTT
+  dgl_sample_micptt();
+  if (!dgl_micptt_enabled) {	// self-deactivation if PTT disabled.
+    dgl_function = dgl_inactive;
+  } else if (dgl_micptt_triggered) {
+    dgl_function = dgl_header_wd;	// check header, until headertx is finished
+    dgl_start_transmit();
+  }
 }
 
 
 void dgl_activemicptt(void) {
-  unsigned int micptt = get_mic_ptt_pin();
-  if ((micptt != 0) && (micptt == dgl_micptt_pinstate)) {	// simple debounce
+  dgl_sample_micptt();
+  if (!dgl_micptt_triggered) {
     dgl_stop_transmit();
-    if (dgl_micptt_enabled)	// if disabled, inactivate it
-      dgl_function = dgl_waitmicptt;
-    else
-      dgl_function = dgl_inactive;
-    dgl_micptt_triggered = false;
+    dgl_function = (dgl_micptt_enabled)?dgl_waitmicptt:dgl_inactive;
   }
-  dgl_micptt_pinstate = micptt;
 }
 
 
 void dgl_header_wd(void) {
-  if (rptr_tx_state == RPTRTX_voicedata)
+  if (!dgl_micptt_enabled)
+    dgl_function = dgl_inactive;
+  else if (rptr_tx_state == RPTRTX_voicedata)
     dgl_function = dgl_activemicptt;	// enable check-mic-ptt for release
   else if (rptr_tx_state <= RPTRTX_idle)
     dgl_function = dgl_waitmicptt;
@@ -236,48 +249,48 @@ void dgl_header_wd(void) {
 
 
 
-int dgl_is_inuse(void) {
-  return (dgl_function != dgl_inactive);
+__inline int dgl_is_inuse(void) {
+  return (ambe_getstate() > AMBEsleep);
 }
+
 
 // start transmitting voicedata from AMBE
 void dgl_start_transmit(void) {
-  if (ambe_mode != AMBE_noboard) {		// ignore, if no board or no config
+  if ( (ambe_mode != AMBE_noboard) &&		// ignore, if no board or no config
+    ( (rptr_tx_state <= RPTRTX_idle) || RPTR_is_set(RPTR_PTTCANBREAK) ) ) {
 #if (DVTX_TIMER_CH==IDLE_TIMER_CH)
     idle_timer_stop();
 #else
     idle_timer_start();				// disable receiving
 #endif
-    if (rptr_tx_state > RPTRTX_idle) {		// DV-RPTR is transmitting, restart it
-    //if (is_pttactive()) {
-      if (dgl_micptt_triggered) return;		// already transmitting
-      if (rptr_tx_state == RPTRTX_voicedata) {
-        gmsk_set_reloadfunc(dgl_break_current);	// unmittelbar Header hinter EOT
-      } else if (rptr_tx_state == RPTRTX_lastframe) {
-        gmsk_set_reloadfunc(dgl_begin_new_tx);
-      } else {
-        gmsk_set_reloadfunc(dgl_transmit_header);
-        rptr_transmit_fullpreamble();
-      } // esle fi
-    } else {
+    ambe_encode();				// Release AMBE2020 reset (enable function)
+    if (rptr_tx_state <= RPTRTX_idle) {		// idle, activate TX
       if (!RPTR_is_set(RPTR_PTTLOCKED)) enable_ptt();
       trx_transmit();
       gmsk_set_reloadfunc(dgl_transmit_header);	// after TXed preamble + START-pattern, load header
       rptr_transmit_fullpreamble();
       RPTR_set(RPTR_TRANSMITTING);
       LED_Set(LED_RED);
-      ambe_encode();				// Release AMBE2020 reset (enable function)
       rptr_tx_state = RPTRTX_preamble;
       rptr_disable_receive();			// disable RX...
-    } // fi from idle
-  } // fi not tx data
+    } else {		// DV-RPTR is transmitting, restart it
+      if (rptr_tx_state == RPTRTX_voicedata) {
+        gmsk_set_reloadfunc(dgl_break_current);	// unmittelbar Header hinter EOT
+      } else if (rptr_tx_state == RPTRTX_lastframe) {
+        gmsk_set_reloadfunc(dgl_begin_new_tx);
+      } else {
+        gmsk_set_reloadfunc(dgl_transmit_start);	// change from preamble to header
+      } // esle fi
+    }
+    RPTR_clear(RPTR_EOT_DEFINED);
+  } // fi AMBE on
+//if (dgl_micptt_triggered) return;		// already transmitting
 }
 
 
 
 void dgl_stop_transmit(void) {
   if (ambe_mode != AMBE_noboard) {		// ignore, if no board
-//    if (is_pttactive() && (ambe_getstate() >= AMBEbooting)) {
     if ((rptr_tx_state > RPTRTX_idle) && (ambe_getstate() >= AMBEbooting)) {
       if (rptr_tx_state == RPTRTX_voicedata)
         rptr_tx_state = RPTRTX_lastframe;
@@ -294,7 +307,7 @@ unsigned int dgl_init(void) {
   ambe_mode    = AMBE_noboard;
   ambe_operror_cnt = 0;
   ambe_setup();				// setup memory structures for SSC I/O needed by AMBE
-  dgl_micptt_pinstate = get_mic_ptt_pin();
+  dgl_micptt_pinreg = 0;		// prevent PTT-ON on power up
   if (tlv_init()) {			// if auto-detect a AMBE addon board...
     ambe_init();			// setup AMBE functions
     ambe_set_timeout(DSTAR_DECODE_TO);
@@ -306,7 +319,6 @@ unsigned int dgl_init(void) {
 
 
 int dgl_is_encoding(void) {
-//  return (is_pttactive() && dgl_micptt_triggered);
   return ((rptr_tx_state > RPTRTX_idle) && dgl_micptt_triggered);
 }
 
@@ -424,26 +436,36 @@ char *cfg_read_c3(char *config_buffer) {
 
 
 void cfg_write_c2(const char *config_data) {
+  dgl_function      = dgl_inactive;		// disable PTT function
+  dgl_micptt_pinreg = DGL_MICPTT_INIT;
+  RPTR_clear(RPTR_AMBEDECODEHF|RPTR_AMBEDECODEINET|RPTR_PTTCANBREAK);
   // write new DONGLE header data
   memcpy(&dongle_header.RPT2Call, config_data + 4, 36);
-  // process new header
-  dgl_routeflags();
+  // process new header:
+  dgl_routeflags();	// config REPEATER-Flag-Bit6
   append_crc_ccitt_revers((char *)&dongle_header, sizeof(tds_header));
-  dstar_buildheader(dgl_HeaderBS, &dongle_header);
-  // Control-Flags
-  RPTR_clear(RPTR_AMBEDECODEHF|RPTR_AMBEDECODEINET);
-  if (config_data[0] & 0x01) RPTR_set(RPTR_AMBEDECODEHF);
-  if (config_data[0] & 0x02) RPTR_set(RPTR_AMBEDECODEINET);
-  // Control PTT
-  dgl_micptt_enabled = (config_data[0] & 0x10) != 0;
+  dstar_buildheader(dgl_HeaderBS, &dongle_header);	// make Bitstream
+  // process mode-flags (first byte of config):
   if (ambe_mode != AMBE_noboard) {
-    if (dgl_micptt_enabled) {	// enable mictrophone PTT
-      if (dgl_function == dgl_inactive)
-	dgl_function = dgl_waitmicptt;
-    } else {
-      dgl_stop_transmit();
+    // Control-Flags
+    ambe_mode = AMBE_initialized;
+    if (config_data[0] & 0x01) {
+      RPTR_set(RPTR_AMBEDECODEHF);
+      ambe_mode = AMBE_HFonly;
     }
-  }
+    if (config_data[0] & 0x02) {
+      RPTR_set(RPTR_AMBEDECODEINET);	//AMBE_INETfirst can't set now
+      ambe_mode = (ambe_mode==AMBE_HFonly)? AMBE_HFfirst : AMBE_INETonly;
+    }
+    if ((config_data[0] & 0x04)==0) {
+      RPTR_set(RPTR_PTTCANBREAK);
+    }
+    // Control PTT (active only if requested AND >1 decode bit is set)
+    dgl_micptt_enabled = ((config_data[0] & 0x10) != 0) && (ambe_mode > AMBE_initialized);
+    if (dgl_micptt_enabled) {
+      dgl_function = dgl_waitmicptt;	// enable mictrophone PTT
+    } // fi PTT
+  } // fi have AMBE
 }
 
 
