@@ -627,7 +627,7 @@ void rptr_transmit(void) {
     trx_transmit();
     gmsk_set_reloadfunc(rptr_transmit_header);	// after TXed preamble + START-pattern, load header
     rptr_transmit_fullpreamble();
-    RPTR_Flags |= RPTR_TRANSMITTING;
+    RPTR_set(RPTR_TRANSMITTING);
     LED_Set(LED_RED);
     rptr_tx_state = RPTRTX_preamble;
     rptr_clear_tx_buffer();

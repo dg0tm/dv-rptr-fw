@@ -95,6 +95,7 @@
  * 2012-07-21 V1.67  C0-Config Flagbit 6 = PTTLOCKED (no external PTT_OUT)
  * 2012-07-24 V1.68  EOT-Command locks Stop-Position for current stream
  * 2012-08-01 V1.69  TWI blocking functions, used in controls, tlv320aic and rda1846
+ * 2012-08-08 V1.69b Dongle PTT debounced, additional PTT-blocking feature, BugFixes
  *
  * ToDo:
  * - Serial (RS232) port configurable
