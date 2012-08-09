@@ -26,6 +26,7 @@
  *
  * Report:
  * 2012-08-07	Rework AMBE-Timer Handling on Encode/Decode Calls
+ * 2012-08-09	New Define fpr SSC-Clock, default 1.00MHz (prev 2.00MHz)
  *
  * ToDo:
  * -Check Power-Down vs. Hard-Reset Current
@@ -55,6 +56,8 @@
 #define SSC_xCMR_CLKBYMCU	0x13000404	// continous clock, Start falling RF, Period 40Clks
 #define SSC_xFMR_CLKBYMCU	0x0020008F	// RF: Pos.Pulse, 16Bit Len, MSB First, 24 Data
 #define SSC_xCMR_CKI_MASK	0x00000020
+
+#define SSC_CLOCK_DIVIDER	30		// 1.00MHz SSC Clock (RK,TK Pins)
 
 
 #define AMBE_TIMER		AVR32_TC.channel[AMBE_TIMER_CH]
@@ -634,7 +637,7 @@ void ambe_init(void) {
 
   // *** Synchronous Serial Controller init ***
   AVR32_SSC.cr   = 0x00008000;		// Do a software reset
-  AVR32_SSC.cmr  = 15;			// 2.00MHz SSC Clock (RK,TK Pins)
+  AVR32_SSC.cmr  = SSC_CLOCK_DIVIDER;	// SSC Clock Deiver for RK,TK Pins
   AVR32_SSC.rcmr = SSC_xCMR_CLKBYMCU;	// startdelay 1 clk, 20 Bits Period (9orig)
   AVR32_SSC.rfmr = SSC_xFMR_CLKBYMCU;	// RF used as Output
   AVR32_SSC.tcmr = SSC_xCMR_CLKBYMCU|SSC_xCMR_CKI_MASK;	// like RX, but bit shifted on raising edge
