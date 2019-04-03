@@ -54,5 +54,10 @@ unsigned short cdc_look_leword(int pos);
 
 void	cdc_enabletimeout(tusb_to_func Function, int ms);
 
+/* cdc_isactive()
+ * returns 'true' if USB port is connected and configured
+ */
+int	cdc_isactive(void);
+
 
 #endif // USB_FUNC_H_

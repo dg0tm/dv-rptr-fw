@@ -1,0 +1,12 @@
+#Tue Dec 06 14:43:18 CET 2011
+eclipse.preferences.version=1
+environment/buildEnvironmentInclude/avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911/CPATH/delimiter=;
+environment/buildEnvironmentInclude/avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911/CPATH/operation=remove
+environment/buildEnvironmentInclude/avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911/C_INCLUDE_PATH/delimiter=;
+environment/buildEnvironmentInclude/avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911/C_INCLUDE_PATH/operation=remove
+environment/buildEnvironmentInclude/avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911/append=true
+environment/buildEnvironmentInclude/avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911/appendContributed=true
+environment/buildEnvironmentLibrary/avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911/LIBRARY_PATH/delimiter=;
+environment/buildEnvironmentLibrary/avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911/LIBRARY_PATH/operation=remove
+environment/buildEnvironmentLibrary/avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911/append=true
+environment/buildEnvironmentLibrary/avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911/appendContributed=true

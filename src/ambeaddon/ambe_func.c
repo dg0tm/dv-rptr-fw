@@ -26,7 +26,8 @@
  *
  * Report:
  * 2012-08-07	Rework AMBE-Timer Handling on Encode/Decode Calls
- * 2012-08-09	New Define fpr SSC-Clock, default 1.00MHz (prev 2.00MHz)
+ * 2012-08-09	New Define for SSC-Clock, default 1.00MHz (prev 2.00MHz)
+ * 2012-03-14	2.00MHz SSC
  *
  * ToDo:
  * -Check Power-Down vs. Hard-Reset Current
@@ -57,7 +58,7 @@
 #define SSC_xFMR_CLKBYMCU	0x0020008F	// RF: Pos.Pulse, 16Bit Len, MSB First, 24 Data
 #define SSC_xCMR_CKI_MASK	0x00000020
 
-#define SSC_CLOCK_DIVIDER	30		// 1.00MHz SSC Clock (RK,TK Pins)
+#define SSC_CLOCK_DIVIDER	15		// 2.00MHz SSC Clock (RK,TK Pins)
 
 
 #define AMBE_TIMER		AVR32_TC.channel[AMBE_TIMER_CH]
@@ -116,7 +117,7 @@ unsigned int	ambe_dtmf_count, ambe_2ndtone_count, ambe_tonepause_count;
 unsigned char	ambe_2ndtone_val;
 
 tambestate	AMBEstate = AMBEnoinit;		// Zustand AMBE-Chip
-tambestate	prevAMBEstate = AMBEnoinit;	// Zustand brei letzter newstate Abfrage
+tambestate	prevAMBEstate = AMBEnoinit;	// Zustand bei letzter newstate Abfrage
 
 unsigned short	BitErrorRate;
 

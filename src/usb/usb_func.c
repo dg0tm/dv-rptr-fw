@@ -292,3 +292,7 @@ void cdc_enabletimeout(tusb_to_func Function, int ms) {
   cdc_timeout_fct = Function;
 }
 
+
+__inline int cdc_isactive(void) {
+  return (usb_handler == cdc_receiving);
+}

@@ -87,7 +87,7 @@ typedef struct PACKED_DATA {
   unsigned char		rxid;		// ID of current transmission (alter it, when start a new one)
   unsigned char		flags;		// control-flags
   unsigned char		biterrs;	// no of bit-errors in a received header (not jet)
-  unsigned char		srcflags;	// source flags, bit1 = internal by AMBEaddon
+  unsigned char		srcflags;	// source flags, bit0 = internal by AMBEaddon
   tds_header		header;		// header starts at offset +8! 41 bytes long
   unsigned char		rsvd2;		// for future use
   unsigned short	crc;
@@ -99,7 +99,7 @@ typedef struct PACKED_DATA {
   unsigned char		pktcount;
   unsigned short	rssi;		// SQL-line value (averaged for every voice frame)
   tds_voicedata		DVdata;		// DVdata starts at offset +8!
-  unsigned char		srcflags;	// source flags, bit1 = internal by AMBEaddon
+  unsigned char		srcflags;	// source flags, bit0 = internal by AMBEaddon
   unsigned char		rsvd;		// for future use
   unsigned short	crc;
 } tvoicepcdata;
@@ -163,7 +163,7 @@ void data_timeout(int rx_length) {
 }
 */
 
-/* rptr_reset_inferface() is called from USB-hander, if someone unplug the USB
+/* rptr_reset_inferface() is called from USB-handler, if someone unplug the USB
  * in this case disable DV-RPTR (exeption: AMBE-addon used for HF)
  */
 void rptr_reset_inferface(void) {	// usb disconneced

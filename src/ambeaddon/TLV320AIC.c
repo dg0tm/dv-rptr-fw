@@ -128,7 +128,7 @@ typedef struct PACKED_DATA {
   unsigned char	mic_imp;	// Microphone Impedance Value
   signed   char	adc_gain;	// ADC Gain Value -12..20dB (0.5dB steps)
   unsigned char adc_filter;	// Selection between PB4,PB5 and PB6
-  signed   char	spkr_out;	// inernal speaker -128 = off; gain 0.5dB steps
+  signed   char	spkr_out;	// internal speaker -128 = off; gain 0.5dB steps
   signed   char hs_out;		// handset speaker -128 = off; gain 0.5dB steps
   signed   char volume;		// DAC volume (-63.5dB .. +24dB; 0.5dB steps) 0x7F = Poti
   unsigned char dac_filter;	// DAC filter selection
@@ -537,6 +537,7 @@ void cfg_write_c4(const char *config_data) {
       CONFIG_C4.volume = 48; // max. +24dB
 
     tlv_writereg(TLV_REG_DACPATHSET, 0x94);	// PowerUp DAC (for LEFT channel only)
+
     tlv_set_DACvolume(CONFIG_C4.volume);
   } // fi present
 }

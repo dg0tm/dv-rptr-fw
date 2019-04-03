@@ -221,7 +221,7 @@ int main(void) {
   init_modemdata();			// Initialisation of persitent Pkts (Header, Voice)
 
   Enable_global_interrupt();		// Enable all interrupts.
-  idle_timer_start();			// keep �C alive to handle external WD & SLEEP() resume
+  idle_timer_start();			// keep uC alive to handle external WD & SLEEP() resume
 
   // *** initializing ADDon boards (needs enabled interrupts + idle timer)
   trx_capabilities = trx_init();	// init optional TRX module
