@@ -68,7 +68,6 @@
 
 #define MASTERCLOCK		60000000L
 
-#define OSC0STARTUPVALUE	4
 
 // DAC Standard Values for GMSK / D-Star
 #define DAC_MIDDLE		0		// Signed Offset to real Bit-Middle

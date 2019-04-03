@@ -210,7 +210,6 @@ int main(void) {
   }
 #endif
 
-  INTC_init_interrupts();		// Initialize interrupt vectors.
   rptr_init_hardware();
   usb_init();				// Enable VBUS-Check
   rs232_init(115200, no_flow);		// Enable serial port (2nd PCP2 in the moment)

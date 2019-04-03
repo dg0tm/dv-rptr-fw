@@ -32,10 +32,13 @@
  *
  */
 
-
 #include "gpio_func.h"
 #include "hw_defs.h"
-#include "compiler.h"
+
+#include <compiler.h>
+#include <intc.h>
+
+#define PLL_96MHZ_VALUE 0x2007010d              // 96MHz/2 -> 48MHz for USB
 
 
 __inline void gpio0_set(unsigned int pin) {
@@ -74,8 +77,6 @@ __inline unsigned int gpio1_readpin(unsigned int pin) {
   return (AVR32_GPIO.port[1].pvr & (1 << (pin&0x1F)));
 }
 
-
-
 __inline void watchdog(void) {
 #ifdef DVRPTR
   if (Get_system_register(AVR32_COUNT)&0x01000000) {
@@ -92,17 +93,43 @@ __inline void watchdog(void) {
 #endif
 }
 
-
-
 void init_hardware(void) {
-  // 1. Enable OSC0 with 12MHz Crystal
-  AVR32_PM.oscctrl0 = (7<<AVR32_PM_OSCCTRL0_MODE_OFFSET)
-    |(OSC0STARTUPVALUE<<AVR32_PM_OSCCTRL0_STARTUP_OFFSET);
-  AVR32_PM.mcctrl = AVR32_PM_MCCTRL_OSC0EN_MASK;	// slow-clock + OSC0 on
-  // 2. Program PLL
-  AVR32_PM.pll[0] = 0x2009010d;
-  // (MUL=10/DIV=1)
-  // 3. Init GPIO-Pins
+    // AVR32119
+    // 3.2.2  Low-Level Initialization: Flash Controller (FLASHC)
+  AVR32_FLASHC.fcr |= AVR32_FLASHC_FCR_FWS_MASK;
+
+    // 3.2.3  Low-Level Initialization: Main Oscillator
+    //    configure OSC0 (12MHz crystal, 4096 cycles startup)
+  AVR32_PM.oscctrl0 = (AVR32_PM_OSCCTRL0_MODE_CRYSTAL_G3    << AVR32_PM_OSCCTRL0_MODE_OFFSET)
+                    | (AVR32_PM_OSCCTRL0_STARTUP_4096_RCOSC << AVR32_PM_OSCCTRL0_STARTUP_OFFSET);
+
+
+    //    set enable OSC0 and wait until ready
+  AVR32_PM.mcctrl = AVR32_PM_MCCTRL_OSC0EN_MASK;
+  while (!(AVR32_PM.poscsr & AVR32_PM_POSCSR_OSC0RDY_MASK));
+
+    //    set CPU clock to OSC0
+  AVR32_PM.mcctrl |=  AVR32_PM_MCCTRL_MCSEL_OSC0;
+
+    //    configure PLL0 (??MHz)
+  AVR32_PM.pll[0] = (32     << AVR32_PM_PLL0_PLLCOUNT_OFFSET) |
+                    ( 1     << AVR32_PM_PLL0_PLLDIV_OFFSET)   |
+                    ( 1     << AVR32_PM_PLL0_PLLEN_OFFSET)    |
+                    ( 9     << AVR32_PM_PLL0_PLLMUL_OFFSET)   |
+                    ( 0b011 << AVR32_PM_PLL0_PLLOPT_OFFSET);
+
+    //    enable PLL0 and wait until ready
+  AVR32_PM.pll[0] |= AVR32_PM_PLLEN_MASK;
+  while (!(AVR32_PM.poscsr & AVR32_PM_POSCSR_LOCK0_MASK));
+
+    //    set CPU clock to PLL0
+  AVR32_PM.mcctrl = AVR32_PM_MCSEL_PLL0|AVR32_PM_MCCTRL_OSC0EN_MASK;
+
+    // 3.2.3.1 Low-Level Initialization: Interrupt Controller
+  INTC_init_interrupts();
+
+
+  // Init GPIO-Pins
   AVR32_GPIO.port[0].puer  = GPIO0_PULLUP;
   AVR32_GPIO.port[0].ovr   = GPIO0_OVRINIT;
   AVR32_GPIO.port[0].oder  = GPIO0_ODER;		// Output-Enable
@@ -115,19 +142,7 @@ void init_hardware(void) {
   AVR32_GPIO.port[1].pmr0  = GPIO1_PMR0;
   AVR32_GPIO.port[1].pmr1  = GPIO1_PMR1;
   AVR32_GPIO.port[1].gperc = GPIO1_DISABLE_MASK;
-  // 3. Set Waitstate for Flash (Clock > 30MHz)
-  AVR32_FLASHC.fcr |= AVR32_FLASHC_FCR_FWS_MASK;
-  // 4. Wait PLL stabilize; pm_wait_for_pll0_locked(pm);
-  while (!(AVR32_PM.poscsr & AVR32_PM_POSCSR_LOCK0_MASK));
-  // 5. Switch Mainclock to PLL0
-  AVR32_PM.mcctrl  = AVR32_PM_MCSEL_PLL0|AVR32_PM_MCCTRL_OSC0EN_MASK;
-  AVR32_PM.pbamask = PBAMASK_NEEDED;
-  AVR32_PM.pbbmask = PBBMASK_NEEDED;
 }
-
-
-
-#define PLL_96MHZ_VALUE	0x2007010d		// 96MHz/2 -> 48MHz for USB
 
 int init_usb_hardware(void) {
   if (AVR32_PM.pll[1] == PLL_96MHZ_VALUE) {
@@ -143,11 +158,8 @@ int init_usb_hardware(void) {
   return FALSE;
 }
 
-
 void exit_usb_hardware(void) {
   AVR32_PM.gcctrl[AVR32_PM_GCLK_USBB] = 0;	// Turn off generic clock
   AVR32_PM.pll[1] = 0;				// Turn Off PLL1
   AVR32_PM.pbbmask = PBBMASK_NEEDED;		// Disable Power for USB Module
 }
-
-
