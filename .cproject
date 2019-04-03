@@ -13,7 +13,7 @@
 </extensions>
 </storageModule>
 <storageModule moduleId="cdtBuildSystem" version="4.0.0">
-<configuration artifactName="DV-RPTR" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.debug,org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe" cleanCommand="rm -rf" description="AVR32 Standalone debug configuration" id="avr32.managedbuild.config.gnu.exe.debug.1620060750" name="Debug" parent="avr32.managedbuild.config.gnu.exe.debug" postbuildStep="avr32-objcopy -O binary ${ProjName}.elf  ${ProjName}.bin">
+<configuration artifactName="DV-RPTR" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe,org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.debug" cleanCommand="rm -rf" description="AVR32 Standalone debug configuration" id="avr32.managedbuild.config.gnu.exe.debug.1620060750" name="Debug" parent="avr32.managedbuild.config.gnu.exe.debug" postbuildStep="avr32-objcopy -O binary ${ProjName}.elf  ${ProjName}.bin">
 <folderInfo id="avr32.managedbuild.config.gnu.exe.debug.1620060750." name="/" resourcePath="">
 <toolChain id="avr32.managedbuild.toolchain.gnu.exe.debug.696810915" name="32-bit AVR/GNU C/C++ Toolchain" superClass="avr32.managedbuild.toolchain.gnu.exe.debug">
 <targetPlatform id="avr32.managedbuild.target.gnu.platform.exe.debug.1434804691" name="%PlatformName.Dbg" superClass="avr32.managedbuild.target.gnu.platform.exe.debug"/>
@@ -96,7 +96,7 @@
 </folderInfo>
 <sourceEntries>
 <entry excluding="src" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
-<entry excluding="pick21mode.h|pick21mode.c|fifo_interface.c|old_interface.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="src"/>
+<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="src"/>
 </sourceEntries>
 </configuration>
 </storageModule>
@@ -931,7 +931,7 @@
 </extensions>
 </storageModule>
 <storageModule moduleId="cdtBuildSystem" version="4.0.0">
-<configuration artifactName="DV-RPTR" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.debug,org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe" cleanCommand="rm -rf" description="Optimized Version w/o debugging" id="avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911" name="Release" parent="avr32.managedbuild.config.gnu.exe.debug" postannouncebuildStep="Build Firmware" postbuildStep="&quot;${ProjDirPath}/makedvfw.bat&quot; ${ProjName}.elf">
+<configuration artifactName="DV-RPTR" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe,org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.debug" cleanCommand="rm -rf" description="Optimized Version w/o debugging" id="avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911" name="Release" parent="avr32.managedbuild.config.gnu.exe.debug" postannouncebuildStep="Build Firmware" postbuildStep="&quot;${ProjDirPath}/makedvfw.bat&quot; ${ProjName}.elf">
 <folderInfo id="avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911." name="/" resourcePath="">
 <toolChain id="avr32.managedbuild.toolchain.gnu.exe.debug.435269593" name="32-bit AVR/GNU C/C++ Toolchain" superClass="avr32.managedbuild.toolchain.gnu.exe.debug">
 <targetPlatform id="avr32.managedbuild.target.gnu.platform.exe.debug.1261114217" name="%PlatformName.Dbg" superClass="avr32.managedbuild.target.gnu.platform.exe.debug"/>
@@ -1015,7 +1015,7 @@
 </folderInfo>
 <sourceEntries>
 <entry excluding="src" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
-<entry excluding="pick21mode.h|pick21mode.c|fifo_interface.c|old_interface.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="src"/>
+<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="src"/>
 </sourceEntries>
 </configuration>
 </storageModule>
@@ -1850,7 +1850,7 @@
 </extensions>
 </storageModule>
 <storageModule moduleId="cdtBuildSystem" version="4.0.0">
-<configuration artifactName="DV-RPTR" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.debug,org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe" cleanCommand="rm -rf" description="Enable TIOA PinOutput with Timer1" id="avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911.1969490217" name="Test 15MHz" parent="avr32.managedbuild.config.gnu.exe.debug" postannouncebuildStep="Build Firmware" postbuildStep="&quot;${ProjDirPath}/makedvfw.bat&quot; ${ProjName}.elf">
+<configuration artifactName="DV-RPTR" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe,org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.debug" cleanCommand="rm -rf" description="Enable TIOA PinOutput with Timer1" id="avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911.1969490217" name="Test 15MHz" parent="avr32.managedbuild.config.gnu.exe.debug" postannouncebuildStep="Build Firmware" postbuildStep="&quot;${ProjDirPath}/makedvfw.bat&quot; ${ProjName}.elf">
 <folderInfo id="avr32.managedbuild.config.gnu.exe.debug.1620060750.469583911.1969490217." name="/" resourcePath="">
 <toolChain id="avr32.managedbuild.toolchain.gnu.exe.debug.2038925159" name="32-bit AVR/GNU C/C++ Toolchain" superClass="avr32.managedbuild.toolchain.gnu.exe.debug">
 <targetPlatform id="avr32.managedbuild.target.gnu.platform.exe.debug.532469141" name="%PlatformName.Dbg" superClass="avr32.managedbuild.target.gnu.platform.exe.debug"/>
@@ -1935,7 +1935,7 @@
 </folderInfo>
 <sourceEntries>
 <entry excluding="src" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name=""/>
-<entry excluding="pick21mode.h|pick21mode.c|fifo_interface.c|old_interface.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="src"/>
+<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="src"/>
 </sourceEntries>
 </configuration>
 </storageModule>
