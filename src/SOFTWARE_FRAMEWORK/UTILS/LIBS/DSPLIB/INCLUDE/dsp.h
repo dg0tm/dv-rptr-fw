@@ -1,4 +1,4 @@
-/* This header file is part of the ATMEL AVR32-SoftwareFramework-AT32UC3B-1.4.0 Release */
+/* This header file is part of the ATMEL AVR-UC3-SoftwareFramework-1.7.0 Release */
 
 
 // This header file is a compilation of multiple dsp header files
@@ -19,33 +19,36 @@
  *
  ******************************************************************************/
 
-/* Copyright (C) 2006-2008, Atmel Corporation All rights reserved.
+/* Copyright (c) 2009 Atmel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
  *
  * 2. Redistributions in binary form must reproduce the above copyright notice,
  * this list of conditions and the following disclaimer in the documentation
  * and/or other materials provided with the distribution.
  *
- * 3. The name of ATMEL may not be used to endorse or promote products derived
+ * 3. The name of Atmel may not be used to endorse or promote products derived
  * from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY ATMEL ``AS IS'' AND ANY EXPRESS OR IMPLIED
+ * 4. This software may only be redistributed and used in connection with an Atmel
+ * AVR product.
+ *
+ * THIS SOFTWARE IS PROVIDED BY ATMEL "AS IS" AND ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE EXPRESSLY AND
- * SPECIFICALLY DISCLAIMED. IN NO EVENT SHALL ATMEL BE LIABLE FOR ANY DIRECT,
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT ARE
+ * EXPRESSLY AND SPECIFICALLY DISCLAIMED. IN NO EVENT SHALL ATMEL BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
  * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
  * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
  * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+ *
  */
-
 /************* Group definition for doxygen documentation ******************/
 
 /*! \defgroup group_functions Basic
@@ -119,33 +122,36 @@
  *
  ******************************************************************************/
 
-/* Copyright (C) 2006-2008, Atmel Corporation All rights reserved.
+/* Copyright (c) 2009 Atmel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
  *
  * 2. Redistributions in binary form must reproduce the above copyright notice,
  * this list of conditions and the following disclaimer in the documentation
  * and/or other materials provided with the distribution.
  *
- * 3. The name of ATMEL may not be used to endorse or promote products derived
+ * 3. The name of Atmel may not be used to endorse or promote products derived
  * from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY ATMEL ``AS IS'' AND ANY EXPRESS OR IMPLIED
+ * 4. This software may only be redistributed and used in connection with an Atmel
+ * AVR product.
+ *
+ * THIS SOFTWARE IS PROVIDED BY ATMEL "AS IS" AND ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE EXPRESSLY AND
- * SPECIFICALLY DISCLAIMED. IN NO EVENT SHALL ATMEL BE LIABLE FOR ANY DIRECT,
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT ARE
+ * EXPRESSLY AND SPECIFICALLY DISCLAIMED. IN NO EVENT SHALL ATMEL BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
  * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
  * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
  * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+ *
  */
-
 /*! \addtogroup group_qformat
  * This module regroups the options used to configure the signed fixed point Q format.\n
  * Here is a description of the Q-Format:\n
@@ -183,12 +189,15 @@
 #ifndef __DSP_TYPES_H__
 #define __DSP_TYPES_H__
 
+
 #if __ICCAVR32__
 #  include <intrinsics.h>
 #endif
 #include "compiler.h"
 #include "preprocessor.h"
 
+
+#ifdef __AVR32_ABI_COMPILER__
 
 #if __ICCAVR32__
 
@@ -223,6 +232,8 @@
 #else
 # error Unknown compiler
 #endif
+
+#endif // __AVR32_ABI_COMPILER__
 
 /*! \name Q Format definition for the 16-bit type
  * \note The 16-bit functions are optimized to work with a Q1.15 format:\n
@@ -284,6 +295,8 @@
 # error in the definition of the 32-bit type. The sum of the "Q format" coefficients should be 32.
 #endif
 
+#ifdef __AVR32_ABI_COMPILER__
+
 /*! \ingroup group_types
  * \brief 16-bit signed fixed point type
  */
@@ -336,6 +349,8 @@ typedef struct A_PACKED dsp32_complex_t
 # pragma pack()
 #endif
 
+#endif // __AVR32_ABI_COMPILER__
+
 /*! \name Limit values in floating-point format of a signed fixed-point number typed Qa.b
  */
 //! \{
@@ -355,11 +370,11 @@ typedef struct A_PACKED dsp32_complex_t
 /*! \ingroup group_macros
  * \brief Return the maximal value of a fixed-point Qa.b typed number.
  */
-#define DSP_Q_MAX(a, b)        (((U32) -1) >> (32 - ((a)+(b)-1)))
+#define DSP_Q_MAX(a, b)        ((S32) (((U32) -1) >> (32 - ((a)+(b)-1))))
 /*! \ingroup group_macros
  * \brief Return the minimal value of a fixed-point Qa.b typed number.
  */
-#define DSP_Q_MIN(a, b)        ((-1) << ((a)+(b)-1))
+#define DSP_Q_MIN(a, b)        ((S32) ((-1) << ((a)+(b)-1)))
 //! \}
 
 /*! \name Resolution in floating-point format of a signed fixed-point number typed Qa.b
@@ -462,35 +477,39 @@ typedef struct A_PACKED dsp32_complex_t
  *
  ******************************************************************************/
 
-/* Copyright (C) 2006-2008, Atmel Corporation All rights reserved.
+/* Copyright (c) 2009 Atmel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
  *
  * 2. Redistributions in binary form must reproduce the above copyright notice,
  * this list of conditions and the following disclaimer in the documentation
  * and/or other materials provided with the distribution.
  *
- * 3. The name of ATMEL may not be used to endorse or promote products derived
+ * 3. The name of Atmel may not be used to endorse or promote products derived
  * from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY ATMEL ``AS IS'' AND ANY EXPRESS OR IMPLIED
+ * 4. This software may only be redistributed and used in connection with an Atmel
+ * AVR product.
+ *
+ * THIS SOFTWARE IS PROVIDED BY ATMEL "AS IS" AND ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE EXPRESSLY AND
- * SPECIFICALLY DISCLAIMED. IN NO EVENT SHALL ATMEL BE LIABLE FOR ANY DIRECT,
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT ARE
+ * EXPRESSLY AND SPECIFICALLY DISCLAIMED. IN NO EVENT SHALL ATMEL BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
  * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
  * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
  * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-/*! \addtogroup group_vectors
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+ *
+ *
  * - Real
  *  - \ref Addition
+ *  - \ref Addition_with_saturation
  *  - \ref Addition_with_a_real
  *  - \ref Subtraction
  *  - \ref Subtraction_with_a_real
@@ -521,6 +540,8 @@ typedef struct A_PACKED dsp32_complex_t
  
 #ifndef __DSP_VECTORS_H__
 #define __DSP_VECTORS_H__
+
+#ifdef __AVR32_ABI_COMPILER__
 
 #include "string.h"
 
@@ -556,6 +577,37 @@ void dsp16_vect_add(dsp16_t *vect1, dsp16_t *vect2, dsp16_t *vect3, int size);
  * \param size The size of the input buffers.
  */
 void dsp32_vect_add(dsp32_t *vect1, dsp32_t *vect2, dsp32_t *vect3, int size);
+
+/*! \addtogroup group_vectors
+ * \section Addition_with_saturation Addition with saturation
+ * This function adds two vectors and store the result into another one.
+ * It takes care of the saturation.
+ *
+ * Relative functions:
+ * - \ref dsp16_vect_add_and_sat
+ * - \ref dsp32_vect_add_and_sat
+ *
+ * \htmlonly
+ * <hr />
+ * \endhtmlonly
+ */
+
+/*! \brief 16-bit fixed point version of the vector additon function.
+ * \ingroup group_vectors
+ * \param vect1 A pointer on the 16-bit real vector that will recieved the result of the addition.
+ * \param vect2 A pointer on the 16-bit real vector that will be added with the other input vector (vect3).
+ * \param vect3 A pointer on the 16-bit real vector that will be added with the other input vector (vect2).
+ * \param size The size of the input buffers.
+ */
+void dsp16_vect_add_and_sat(dsp16_t *vect1, dsp16_t *vect2, dsp16_t *vect3, int size);
+/*! \brief 32-bit fixed point version of the vector additon function.
+ * \ingroup group_vectors
+ * \param vect1 A pointer on the 32-bit real vector that will recieved the result of the addition.
+ * \param vect2 A pointer on the 32-bit real vector that will be added with the other input vector (vect3).
+ * \param vect3 A pointer on the 32-bit real vector that will be added with the other input vector (vect2).
+ * \param size The size of the input buffers.
+ */
+void dsp32_vect_add_and_sat(dsp32_t *vect1, dsp32_t *vect2, dsp32_t *vect3, int size);
 
 /*! \addtogroup group_vectors
  * \section Addition_with_a_real Addition with a real
@@ -1202,6 +1254,7 @@ void dsp32_vect_complex_abs(dsp32_t *vect1, dsp32_complex_t *vect2, int size);
  */
 void dsp16_vect_complex_conj(dsp16_complex_t *vect1, dsp16_complex_t *vect2, int size);
 
+#endif //__AVR32_ABI_COMPILER__
 #endif //__DSP_VECTORS_H__
 
 /*This file is prepared for Doxygen automatic documentation generation.*/
@@ -1220,33 +1273,36 @@ void dsp16_vect_complex_conj(dsp16_complex_t *vect1, dsp16_complex_t *vect2, int
  *
  ******************************************************************************/
 
-/* Copyright (C) 2006-2008, Atmel Corporation All rights reserved.
+/* Copyright (c) 2009 Atmel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
  *
  * 2. Redistributions in binary form must reproduce the above copyright notice,
  * this list of conditions and the following disclaimer in the documentation
  * and/or other materials provided with the distribution.
  *
- * 3. The name of ATMEL may not be used to endorse or promote products derived
+ * 3. The name of Atmel may not be used to endorse or promote products derived
  * from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY ATMEL ``AS IS'' AND ANY EXPRESS OR IMPLIED
+ * 4. This software may only be redistributed and used in connection with an Atmel
+ * AVR product.
+ *
+ * THIS SOFTWARE IS PROVIDED BY ATMEL "AS IS" AND ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE EXPRESSLY AND
- * SPECIFICALLY DISCLAIMED. IN NO EVENT SHALL ATMEL BE LIABLE FOR ANY DIRECT,
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT ARE
+ * EXPRESSLY AND SPECIFICALLY DISCLAIMED. IN NO EVENT SHALL ATMEL BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
  * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
  * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
  * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-/*! \addtogroup group_filtering
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+ *
+ *
  * - \ref FIR
  * - \ref IIR
  * - \ref Partial_IIR
@@ -1262,6 +1318,8 @@ void dsp16_vect_complex_conj(dsp16_complex_t *vect1, dsp16_complex_t *vect2, int
 
 #ifndef __DSP_FILTERING_H__
 #define __DSP_FILTERING_H__
+
+#ifdef __AVR32_ABI_COMPILER__
 
 /*! \addtogroup group_filtering
  * \section FIR Finite Impulse Response Filter
@@ -1339,7 +1397,7 @@ inline static void dsp32_filt_fir(dsp32_t *vect1, dsp32_t *vect2, int size, dsp3
  * \param den_prediv The predivisor used to scale down the denominator's coefficients of the filter in order to avoid overflow values.
  *                   So when you use this feature, you have to prescale manually the denominator's coefficients by 2^den_prediv else leave this field to 0.
  * \warning Due to its implementation, for the avr32-uc3 optimized version of the IIR,
- *          the output buffer (vect1) have to have a length of 6*n elements to avoid overflows.
+ *          the length of the output buffer (vect1) have to be multiple of 6 in order to avoid overflows.
  */
 void dsp16_filt_iir(dsp16_t *y, dsp16_t *x, int size, dsp16_t *num, int num_size, dsp16_t *den, int den_size, int num_prediv, int den_prediv);
 /*! \brief 32-bit fixed point version of the IIR .
@@ -1358,7 +1416,7 @@ void dsp16_filt_iir(dsp16_t *y, dsp16_t *x, int size, dsp16_t *num, int num_size
  * \param den_prediv The predivisor used to scale down the denominator's coefficients of the filter in order to avoid overflow values.
  *                   So when you use this feature, you have to prescale manually the denominator's coefficients by 2^den_prediv else leave this field to 0.
  * \warning Due to its implementation, for the avr32-uc3 optimized version of the IIR,
- *          the output buffer (vect1) have to have a length of 6*n elements to avoid overflows.
+ *          the length of the output buffer (vect1) have to be multiple of 6 in order to avoid overflows.
  */
 void dsp32_filt_iir(dsp32_t *y, dsp32_t *x, int size, dsp32_t *num, int num_size, dsp32_t *den, int den_size, int num_prediv, int den_prediv);
 
@@ -1395,7 +1453,7 @@ void dsp32_filt_iir(dsp32_t *y, dsp32_t *x, int size, dsp32_t *num, int num_size
  * \param den_prediv The predivisor used to scale down the denominator's coefficients of the filter in order to avoid overflow values.
  *                   So when you use this feature, you have to prescale manually the denominator's coefficients by 2^den_prediv else leave this field to 0.
  * \warning Due to its implementation, for the avr32-uc3 optimized version of the IIR,
- *          the output buffer (vect1) have to have a length of 6*n elements to avoid overflows.
+ *          the length of the output buffer (vect1) have to be multiple of 6 in order to avoid overflows.
  */
 void dsp16_filt_iirpart(dsp16_t *vect1, dsp16_t *vect2, int size, dsp16_t *num, int num_size, dsp16_t *den, int den_size, int num_prediv, int den_prediv);
 /*! \brief 32 bits fixed point version of the IIR .
@@ -1413,6 +1471,7 @@ void dsp16_filt_iirpart(dsp16_t *vect1, dsp16_t *vect2, int size, dsp16_t *num, 
  *                   So when you use this feature, you have to prescale manually the denominator's coefficients by 2^den_prediv else leave this field to 0.
  */
 void dsp32_filt_iirpart(dsp32_t *vect1, dsp32_t *vect2, int size, dsp32_t *num, int num_size, dsp32_t *den, int den_size, int num_prediv, int den_prediv);
+
 
 
 /*! \addtogroup group_filtering
@@ -1448,6 +1507,7 @@ void dsp32_filt_iirpart(dsp32_t *vect1, dsp32_t *vect2, int size, dsp32_t *num, 
  * \param e A pointer on a 16-bit fixed-point value corresponding to the current sample of the output error signal.
  */
 void dsp16_filt_lms(dsp16_t *x, dsp16_t *w, int size, dsp16_t new_x, dsp16_t d, dsp16_t *y, dsp16_t *e);
+
 /*! \brief 32-bit fixed point version of the LMS filter.
  * \ingroup group_filtering
  * \param x A pointer on a 32-bit fixed-point vector of (size) elements that acts as a circular buffer, filled with the input samples. Its elements
@@ -1461,7 +1521,7 @@ void dsp16_filt_lms(dsp16_t *x, dsp16_t *w, int size, dsp16_t new_x, dsp16_t d, 
  * \param e A pointer on a 32-bit fixed-point value corresponding to the current sample of the output error signal.
  */
 void dsp32_filt_lms(dsp32_t *x, dsp32_t *w, int size, dsp32_t new_x, dsp32_t d, dsp32_t *y, dsp32_t *e);
-
+void dsp32_filt_lms_fir(dsp32_t *x, dsp32_t *w, int size, dsp32_t *y, int i);
 
 /*! \addtogroup group_filtering
  * \section NLMS Normalized Least Mean Square Filter
@@ -1496,6 +1556,7 @@ void dsp32_filt_lms(dsp32_t *x, dsp32_t *w, int size, dsp32_t new_x, dsp32_t d, 
  * \param e A pointer on a 16-bit fixed-point value corresponding to the current sample of the output error signal.
  */
 void dsp16_filt_nlms(dsp16_t *x, dsp16_t *w, int size, dsp16_t new_x, dsp16_t d, dsp16_t *y, dsp16_t *e);
+
 /*! \brief 32-bit fixed point version of the NLMS filter.
  * \ingroup group_filtering
  * \param x A pointer on a 32-bit fixed-point vector of (size) elements that acts as a circular buffer, filled with the input samples. Its elements
@@ -1509,7 +1570,7 @@ void dsp16_filt_nlms(dsp16_t *x, dsp16_t *w, int size, dsp16_t new_x, dsp16_t d,
  * \param e A pointer on a 32-bit fixed-point value corresponding to the current sample of the output error signal.
  */
 void dsp32_filt_nlms(dsp32_t *x, dsp32_t *w, int size, dsp32_t new_x, dsp32_t d, dsp32_t *y, dsp32_t *e);
-
+void dsp32_filt_nlms_fir(dsp32_t *x, dsp32_t *w, int size, dsp32_t *y, int i);
 
 /*! \addtogroup group_filtering
  * \section Interpolation Interpolation filter
@@ -1594,6 +1655,7 @@ typedef enum
  */
 void dsp16_filt_lpfirdesign(dsp16_t *c, int fc, int fs, int order, dsp16_win_fct_t dsp16_win_fct, dsp_filt_design_options_t options);
 
+#endif // __AVR32_ABI_COMPILER__
 
 #endif //__DSP_FILTERING_H__
 
@@ -1613,33 +1675,36 @@ void dsp16_filt_lpfirdesign(dsp16_t *c, int fc, int fs, int order, dsp16_win_fct
  *
  ******************************************************************************/
 
-/* Copyright (C) 2006-2008, Atmel Corporation All rights reserved.
+/* Copyright (c) 2009 Atmel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
  *
  * 2. Redistributions in binary form must reproduce the above copyright notice,
  * this list of conditions and the following disclaimer in the documentation
  * and/or other materials provided with the distribution.
  *
- * 3. The name of ATMEL may not be used to endorse or promote products derived
+ * 3. The name of Atmel may not be used to endorse or promote products derived
  * from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY ATMEL ``AS IS'' AND ANY EXPRESS OR IMPLIED
+ * 4. This software may only be redistributed and used in connection with an Atmel
+ * AVR product.
+ *
+ * THIS SOFTWARE IS PROVIDED BY ATMEL "AS IS" AND ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE EXPRESSLY AND
- * SPECIFICALLY DISCLAIMED. IN NO EVENT SHALL ATMEL BE LIABLE FOR ANY DIRECT,
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT ARE
+ * EXPRESSLY AND SPECIFICALLY DISCLAIMED. IN NO EVENT SHALL ATMEL BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
  * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
  * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
  * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-/*! \addtogroup group_operators
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+ *
+ *
  * - \ref Multiplication
  * - \ref Division
  * - \ref Sine
@@ -1662,6 +1727,8 @@ void dsp16_filt_lpfirdesign(dsp16_t *c, int fc, int fs, int order, dsp16_win_fct
 
 #ifndef __DSP_OPERATORS_H__
 #define __DSP_OPERATORS_H__
+
+#ifdef __AVR32_ABI_COMPILER__
 
 /*! \addtogroup group_operators
  * \section Multiplication Multiplication
@@ -2078,6 +2145,8 @@ dsp16_t dsp16_op_rand();
  */
 dsp32_t dsp32_op_rand();
 
+#endif // __AVR32_ABI_COMPILER__
+
 #endif //__DSP_OPERATORS_H__
 
 /*This file is prepared for Doxygen automatic documentation generation.*/
@@ -2144,6 +2213,8 @@ dsp32_t dsp32_op_rand();
 #ifndef __DSP_SIGNAL_GENERATION_H__
 #define __DSP_SIGNAL_GENERATION_H__
 
+#ifdef __AVR32_ABI_COMPILER__
+
 /*! \addtogroup group_signal_generation
  * \section Sinusoidal Sinusoidal
  * \image html signal_generation_sinusoidal.gif 
@@ -2168,8 +2239,9 @@ dsp32_t dsp32_op_rand();
  * \param f The frequency of the output signal.
  * \param fs The sampling frequency of the output signal.
  * \param phase The phase of the output signal.
+ * \return The phase of the signal generated.
  */
-void dsp16_gen_sin(dsp16_t *vect1, int size, int f, int fs, dsp16_t phase);
+dsp16_t dsp16_gen_sin(dsp16_t *vect1, int size, int f, int fs, dsp16_t phase);
 /*! \brief 32-bit fixed point version of the sinusoidal signal generation.
  * \ingroup group_signal_generation
  * \param vect1 A pointer on a 32-bit vector which is the output buffer of this function.
@@ -2177,8 +2249,9 @@ void dsp16_gen_sin(dsp16_t *vect1, int size, int f, int fs, dsp16_t phase);
  * \param f The frequency of the output signal.
  * \param fs The sampling frequency of the output signal.
  * \param phase The phase of the output signal.
+ * \return The phase of the signal generated.
  */
-void dsp32_gen_sin(dsp32_t *vect1, int size, int f, int fs, dsp32_t phase);
+dsp32_t dsp32_gen_sin(dsp32_t *vect1, int size, int f, int fs, dsp32_t phase);
 
 
 /*! \addtogroup group_signal_generation
@@ -2205,8 +2278,9 @@ void dsp32_gen_sin(dsp32_t *vect1, int size, int f, int fs, dsp32_t phase);
  * \param f The frequency of the output signal.
  * \param fs The sampling frequency of the output signal.
  * \param phase The phase of the output signal.
+ * \return The phase of the signal generated.
  */
-void dsp16_gen_cos(dsp16_t *vect1, int size, int f, int fs, dsp16_t phase);
+dsp16_t dsp16_gen_cos(dsp16_t *vect1, int size, int f, int fs, dsp16_t phase);
 /*! \brief 32-bit fixed point version of the cosinusoidal signal generation.
  * \ingroup group_signal_generation
  * \param vect1 A pointer on a 32-bit vector which is the output buffer of this function.
@@ -2214,8 +2288,9 @@ void dsp16_gen_cos(dsp16_t *vect1, int size, int f, int fs, dsp16_t phase);
  * \param f The frequency of the output signal.
  * \param fs The sampling frequency of the output signal.
  * \param phase The phase of the output signal.
+ * \return The phase of the signal generated.
  */
-void dsp32_gen_cos(dsp32_t *vect1, int size, int f, int fs, dsp32_t phase);
+dsp32_t dsp32_gen_cos(dsp32_t *vect1, int size, int f, int fs, dsp32_t phase);
 
 
 /*! \addtogroup group_signal_generation
@@ -2349,8 +2424,9 @@ inline static void dsp32_gen_sqr(dsp32_t *vect1, int size, int f, int fs, dsp32_
  * which is the ratio between the pulse duration and the period of the waveform.
  * \param delay The delay of the periodic waveform. The delay must feet in the range [0; 1]
  * where 1 to T. 
+ * \return The phase of the signal generated.
  */
-void dsp16_gen_saw(dsp16_t *vect1, int size, int f, int fs, dsp16_t duty, dsp16_t delay);
+dsp16_t dsp16_gen_saw(dsp16_t *vect1, int size, int f, int fs, dsp16_t duty, dsp16_t delay);
 /*! \brief 32-bit fixed point version of the saw tooth signal generation.
  * \ingroup group_signal_generation
  * \param vect1 A pointer on a 32-bit vector which is the output buffer of this function.
@@ -2360,9 +2436,10 @@ void dsp16_gen_saw(dsp16_t *vect1, int size, int f, int fs, dsp16_t duty, dsp16_
  * \param duty The duty cycle of the output signal. The duty cycle is a number in the range ]0; 1]
  * which is the ratio between the pulse duration and the period of the waveform.
  * \param delay The delay of the periodic waveform. The delay must feet in the range [0; 1]
- * where 1 to T. 
+ * where 1 to T.
+ * \return The phase of the signal generated.
  */
-void dsp32_gen_saw(dsp32_t *vect1, int size, int f, int fs, dsp32_t duty, dsp32_t delay);
+dsp32_t dsp32_gen_saw(dsp32_t *vect1, int size, int f, int fs, dsp32_t duty, dsp32_t delay);
 
 /*! \addtogroup group_signal_generation
  * \section Dirac_comb Dirac comb
@@ -2493,6 +2570,7 @@ void dsp16_gen_dirac(dsp16_t *vect1, int size, int dirac_index);
  */
 void dsp32_gen_dirac(dsp32_t *vect1, int size, int dirac_index);
 
+#endif // __AVR32_ABI_COMPILER__
 #endif //__DSP_SIGNAL_GENERATION_H__
 
 /*This file is prepared for Doxygen automatic documentation generation.*/
@@ -2511,33 +2589,36 @@ void dsp32_gen_dirac(dsp32_t *vect1, int size, int dirac_index);
  *
  ******************************************************************************/
 
-/* Copyright (C) 2006-2008, Atmel Corporation All rights reserved.
+/* Copyright (c) 2009 Atmel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
  *
  * 2. Redistributions in binary form must reproduce the above copyright notice,
  * this list of conditions and the following disclaimer in the documentation
  * and/or other materials provided with the distribution.
  *
- * 3. The name of ATMEL may not be used to endorse or promote products derived
+ * 3. The name of Atmel may not be used to endorse or promote products derived
  * from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY ATMEL ``AS IS'' AND ANY EXPRESS OR IMPLIED
+ * 4. This software may only be redistributed and used in connection with an Atmel
+ * AVR product.
+ *
+ * THIS SOFTWARE IS PROVIDED BY ATMEL "AS IS" AND ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE EXPRESSLY AND
- * SPECIFICALLY DISCLAIMED. IN NO EVENT SHALL ATMEL BE LIABLE FOR ANY DIRECT,
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT ARE
+ * EXPRESSLY AND SPECIFICALLY DISCLAIMED. IN NO EVENT SHALL ATMEL BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
  * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
  * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
  * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-/*! \addtogroup group_transforms
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+ *
+ *
  * - \ref Complex_FFT
  * - \ref Complex_iFFT
  * - \ref Real_Complex_FFT
@@ -2549,6 +2630,8 @@ void dsp32_gen_dirac(dsp32_t *vect1, int size, int dirac_index);
 
 #ifndef __DSP_TRANSFORMS_H__
 #define __DSP_TRANSFORMS_H__
+
+#ifdef __AVR32_ABI_COMPILER__
 
 /*! \addtogroup group_transforms
  * \section Complex_FFT Complex Fast Fourier Transform
@@ -2642,6 +2725,7 @@ void dsp16_trans_realcomplexfft(dsp16_complex_t *vect1, dsp16_t *vect2, int nlog
  */
 void dsp32_trans_realcomplexfft(dsp32_complex_t *vect1, dsp32_t *vect2, int nlog);
 
+#endif // __AVR32_ABI_COMPILER__
 #endif //__DSP_TRANSFORMS_H__
 /*This file is prepared for Doxygen automatic documentation generation.*/
 /*! \file *********************************************************************
@@ -2659,33 +2743,36 @@ void dsp32_trans_realcomplexfft(dsp32_complex_t *vect1, dsp32_t *vect2, int nlog
  *
  ******************************************************************************/
 
-/* Copyright (C) 2006-2008, Atmel Corporation All rights reserved.
+/* Copyright (c) 2009 Atmel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
  *
  * 2. Redistributions in binary form must reproduce the above copyright notice,
  * this list of conditions and the following disclaimer in the documentation
  * and/or other materials provided with the distribution.
  *
- * 3. The name of ATMEL may not be used to endorse or promote products derived
+ * 3. The name of Atmel may not be used to endorse or promote products derived
  * from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY ATMEL ``AS IS'' AND ANY EXPRESS OR IMPLIED
+ * 4. This software may only be redistributed and used in connection with an Atmel
+ * AVR product.
+ *
+ * THIS SOFTWARE IS PROVIDED BY ATMEL "AS IS" AND ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE EXPRESSLY AND
- * SPECIFICALLY DISCLAIMED. IN NO EVENT SHALL ATMEL BE LIABLE FOR ANY DIRECT,
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT ARE
+ * EXPRESSLY AND SPECIFICALLY DISCLAIMED. IN NO EVENT SHALL ATMEL BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
  * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
  * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
  * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-/*! \addtogroup group_windowing
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+ *
+ *
  * - \ref Rectangular
  * - \ref Bartlett
  * - \ref Blackman
@@ -2703,6 +2790,8 @@ void dsp32_trans_realcomplexfft(dsp32_complex_t *vect1, dsp32_t *vect2, int nlog
 
 #ifndef __DSP_WINDOWING_H__
 #define __DSP_WINDOWING_H__
+
+#ifdef __AVR32_ABI_COMPILER__
 
 /*! \addtogroup group_windowing
  * \section Rectangular Rectangular
@@ -2934,7 +3023,7 @@ void dsp16_win_welch(dsp16_t *vect1, int size);
  */
 void dsp32_win_welch(dsp32_t *vect1, int size);
 
-
+#endif // __AVR32_ABI_COMPILER__
 #endif // __DSP_WINDOWING_H__
 /*This file is prepared for Doxygen automatic documentation generation.*/
 /*! \file *********************************************************************
@@ -2950,33 +3039,36 @@ void dsp32_win_welch(dsp32_t *vect1, int size);
  *
  ******************************************************************************/
 
-/* Copyright (C) 2006-2008, Atmel Corporation All rights reserved.
+/* Copyright (c) 2009 Atmel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
  *
  * 2. Redistributions in binary form must reproduce the above copyright notice,
  * this list of conditions and the following disclaimer in the documentation
  * and/or other materials provided with the distribution.
  *
- * 3. The name of ATMEL may not be used to endorse or promote products derived
+ * 3. The name of Atmel may not be used to endorse or promote products derived
  * from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY ATMEL ``AS IS'' AND ANY EXPRESS OR IMPLIED
+ * 4. This software may only be redistributed and used in connection with an Atmel
+ * AVR product.
+ *
+ * THIS SOFTWARE IS PROVIDED BY ATMEL "AS IS" AND ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE EXPRESSLY AND
- * SPECIFICALLY DISCLAIMED. IN NO EVENT SHALL ATMEL BE LIABLE FOR ANY DIRECT,
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT ARE
+ * EXPRESSLY AND SPECIFICALLY DISCLAIMED. IN NO EVENT SHALL ATMEL BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
  * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
  * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
  * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+ *
  */
-
 /*! \addtogroup group_adpcm
  *
  * \htmlonly
@@ -2986,6 +3078,8 @@ void dsp32_win_welch(dsp32_t *vect1, int size);
 
 #ifndef __ADPCM_H__
 #define __ADPCM_H__
+
+#ifdef __AVR32_ABI_COMPILER__
 
 /*! \brief IMA/DVI ADPCM sample encoder
  * \ingroup group_adpcm
@@ -3034,6 +3128,7 @@ void dsp_adpcm_ima_encode(void *out, S16 *in, int size, S16 *step_index, S16 *pr
  */
 void dsp_adpcm_ima_decode(S16 *out, void *in, int size, S16 *step_index, S16 *predicted_value);
 
+#endif // __AVR32_ABI_COMPILER__
 #endif //__ADPCM_H__
 /*This file is prepared for Doxygen automatic documentation generation.*/
 /*! \file *********************************************************************
@@ -3049,35 +3144,40 @@ void dsp_adpcm_ima_decode(S16 *out, void *in, int size, S16 *step_index, S16 *pr
  *
  ******************************************************************************/
 
-/* Copyright (C) 2006-2008, Atmel Corporation All rights reserved.
+/* Copyright (c) 2009 Atmel Corporation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * 1. Redistributions of source code must retain the above copyright notice,
- * this list of conditions and the following disclaimer.
+ * 1. Redistributions of source code must retain the above copyright notice, this
+ * list of conditions and the following disclaimer.
  *
  * 2. Redistributions in binary form must reproduce the above copyright notice,
  * this list of conditions and the following disclaimer in the documentation
  * and/or other materials provided with the distribution.
  *
- * 3. The name of ATMEL may not be used to endorse or promote products derived
+ * 3. The name of Atmel may not be used to endorse or promote products derived
  * from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY ATMEL ``AS IS'' AND ANY EXPRESS OR IMPLIED
+ * 4. This software may only be redistributed and used in connection with an Atmel
+ * AVR product.
+ *
+ * THIS SOFTWARE IS PROVIDED BY ATMEL "AS IS" AND ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE EXPRESSLY AND
- * SPECIFICALLY DISCLAIMED. IN NO EVENT SHALL ATMEL BE LIABLE FOR ANY DIRECT,
- * INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT ARE
+ * EXPRESSLY AND SPECIFICALLY DISCLAIMED. IN NO EVENT SHALL ATMEL BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
  * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
  * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
  * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+ *
  */
-
 #ifndef __DSP_RESAMPLING_H__
 #define __DSP_RESAMPLING_H__
+
+#ifdef __AVR32_ABI_COMPILER__
 
 #include "dsp.h"
 
@@ -3144,6 +3244,12 @@ void dsp_adpcm_ima_decode(S16 *out, void *in, int size, S16 *step_index, S16 *pr
  * This method is one of the most used in digital signal processing systems.
  * It will generate a clean signal and evaluate at best the waveform of the
  * output signal.
+ *
+ * \section freq_response Frequency response
+ * The signal is attenuated on high frequencies. Following are traces showing the
+ * frequency response of the re-sampling algorithm over different sampling rate conversions.
+ * \image html freq_resp_from_32kHz_to_44.1KHz.jpg "Frequency response from 32KHz to 44.1KHz"
+ * \image html freq_resp_from_48kHz_to_48.51KHz.jpg "Frequency response from 48KHz to 48.51KHz"
  */
 
 /*! \brief This structure is used to store the context of streaming information
@@ -3261,4 +3367,5 @@ int dsp16_resampling_get_output_current_buffer_size(dsp_resampling_t *dsp_resamp
  */
 void dsp16_resampling_compute(dsp_resampling_t *dsp_resampling, dsp16_t *output, dsp16_t *input, int channel);
 
+#endif // __AVR32_ABI_COMPILER__
 #endif //__DSP_RESAMPLING_H__

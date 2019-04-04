@@ -3,10 +3,14 @@
 /*This file is prepared for Doxygen automatic documentation generation.*/
 /*! \file *********************************************************************
  *
- * \brief Preprocessor stringizing utils.
+ * \brief Standard board header file.
+ *
+ * This file includes the appropriate board header file according to the
+ * defined board.
  *
  * - Compiler:           IAR EWAVR32 and GNU GCC for AVR32
  * - Supported devices:  All AVR32 devices can be used.
+ * - AppNote:
  *
  * \author               Atmel Corporation: http://www.atmel.com \n
  *                       Support and FAQ: http://support.atmel.no/
@@ -44,32 +48,74 @@
  *
  */
 
-#ifndef _STRINGZ_H_
-#define _STRINGZ_H_
+#ifndef _BOARD_H_
+#define _BOARD_H_
 
+#include <avr32/io.h>
 
-/*! \brief Stringize.
- *
- * Stringize a preprocessing token, this token being allowed to be \#defined.
- *
- * May be used only within macros with the token passed as an argument if the token is \#defined.
- *
- * For example, writing STRINGZ(PIN) within a macro \#defined by PIN_NAME(PIN)
- * and invoked as PIN_NAME(PIN0) with PIN0 \#defined as A0 is equivalent to
- * writing "A0".
+/*! \name Base Boards
  */
-#define STRINGZ(x)                                #x
+//! @{
+#define EVK1100           1   //!< AT32UC3A EVK1100 board.
+#define EVK1101           2   //!< AT32UC3B EVK1101 board.
+#define UC3C_EK           3   //!< AT32UC3C UC3C_EK board.
+#define EVK1104           4   //!< AT32UC3A3 EVK1104 board.
+#define EVK1105           5   //!< AT32UC3A EVK1105 board.
+#define STK1000           6   //!< AT32AP7000 STK1000 board.
+#define NGW100            7   //!< AT32AP7000 NGW100 board.
+#define STK600_RCUC3L0    8   //!< STK600 RCUC3L0 board.
+#define UC3L_EK           9   //!< AT32UC3L-EK board.
+#define USER_BOARD        99  //!< User-reserved board (if any).
+//! @}
 
-/*! \brief Absolute stringize.
- *
- * Stringize a preprocessing token, this token being allowed to be \#defined.
- *
- * No restriction of use if the token is \#defined.
- *
- * For example, writing ASTRINGZ(PIN0) anywhere with PIN0 \#defined as A0 is
- * equivalent to writing "A0".
+/*! \name Extension Boards
  */
-#define ASTRINGZ(x)                               STRINGZ(x)
+//! @{
+#define EXT1102           1   //!< AT32UC3B EXT1102 board.
+#define MC300             2   //!< AT32UC3 MC300 board.
+#define USER_EXT_BOARD    99  //!< User-reserved extension board (if any).
+//! @}
+
+#if BOARD == EVK1100
+  #include "EVK1100/evk1100.h"
+#elif BOARD == EVK1101
+  #include "EVK1101/evk1101.h"
+#elif BOARD == UC3C_EK
+  #include "UC3C_EK/uc3c_ek.h"
+#elif BOARD == EVK1104
+  #include "EVK1104/evk1104.h"
+#elif BOARD == EVK1105
+  #include "EVK1105/evk1105.h"
+#elif BOARD == STK1000
+  #include "STK1000/stk1000.h"
+#elif BOARD == NGW100
+  #include "NGW100/ngw100.h"
+#elif BOARD == STK600_RCUC3L0
+  #include "STK600/RCUC3L0/stk600_rcuc3l0.h"
+#elif BOARD == UC3L_EK
+  #include "UC3L_EK/uc3l_ek.h"
+#elif BOARD == USER_BOARD
+  // User-reserved area: #include the header file of your board here (if any).
+  #include "user_board.h"
+#else
+  #error No known AVR32 board defined
+#endif
+
+#if (defined EXT_BOARD)
+  #if EXT_BOARD == EXT1102
+    #include "EXT1102/ext1102.h"
+  #elif EXT_BOARD == MC300
+    #include "MC300/mc300.h"
+  #elif EXT_BOARD == USER_EXT_BOARD
+    // User-reserved area: #include the header file of your extension board here
+    // (if any).
+  #endif
+#endif
 
 
-#endif  // _STRINGZ_H_
+#ifndef FRCOSC
+  #define FRCOSC    AVR32_PM_RCOSC_FREQUENCY  //!< Default RCOsc frequency.
+#endif
+
+
+#endif  // _BOARD_H_
