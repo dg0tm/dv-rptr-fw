@@ -37,15 +37,15 @@
 <listOptionValue builtIn="false" value="../src/opendv"/>
 <listOptionValue builtIn="false" value="../src/transceiver"/>
 <listOptionValue builtIn="false" value="../src/ambeaddon"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/INTC"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB/ENUM/DEVICE"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB/ENUM/HOST"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB/ENUM"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/PREPROCESSOR"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/LIBS/DSPLIB/INCLUDE"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/DRIVERS/INTC"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/DRIVERS/USBB/ENUM/DEVICE"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/DRIVERS/USBB/ENUM/HOST"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/DRIVERS/USBB/ENUM"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/DRIVERS/USBB"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS/PREPROCESSOR"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS/LIBS/DSPLIB/INCLUDE"/>
 </option>
 <option id="avr32.c.compiler.option.flashvault.834394340" name="Enable FlashVault support" superClass="avr32.c.compiler.option.flashvault" value="false" valueType="boolean"/>
 <option id="gnu.c.compiler.option.preprocessor.def.symbols.72695026" name="Defined symbols (-D)" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols">
@@ -64,8 +64,8 @@
 <listOptionValue builtIn="false" value="dsp-at32ucr1-dspaccandsize_opt"/>
 </option>
 <option id="gnu.c.link.option.paths.1908798714" name="Library search path (-L)" superClass="gnu.c.link.option.paths" valueType="libPaths">
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/LIBS/DSPLIB"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/LIBS/DSPLIB/AT32UCR1/GCC"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS/LIBS/DSPLIB"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS/LIBS/DSPLIB/AT32UCR1/GCC"/>
 </option>
 <option id="gnu.c.link.option.nostart.1138229560" name="Do not use standard start files (-nostartfiles)" superClass="gnu.c.link.option.nostart" value="true" valueType="boolean"/>
 <option id="gnu.c.link.option.ldflags.1742499197" name="Linker flags" superClass="gnu.c.link.option.ldflags" value="-march=ucr1 -Wl,--gc-sections -Wl,-e,_trampoline" valueType="string"/>
@@ -87,8 +87,8 @@
 <option id="avr32.both.preprocessor.option.mcu.2137995116" name="Microcontroller Unit" superClass="avr32.both.preprocessor.option.mcu" value="-mpart=uc3b0256" valueType="string"/>
 <option id="avr32.both.preprocessor.option.paths.1517955976" name="Include paths (-I)" superClass="avr32.both.preprocessor.option.paths" valueType="includePath">
 <listOptionValue builtIn="false" value="../src"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/PREPROCESSOR"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS/PREPROCESSOR"/>
 </option>
 <inputType id="avr32.managedbuild.tool.gnu.preprocessor.input.1080581145" superClass="avr32.managedbuild.tool.gnu.preprocessor.input"/>
 </tool>
@@ -955,15 +955,15 @@
 <listOptionValue builtIn="false" value="../src/opendv"/>
 <listOptionValue builtIn="false" value="../src/transceiver"/>
 <listOptionValue builtIn="false" value="../src/ambeaddon"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/INTC"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB/ENUM/DEVICE"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB/ENUM/HOST"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB/ENUM"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/PREPROCESSOR"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/LIBS/DSPLIB/INCLUDE"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/DRIVERS/INTC"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/DRIVERS/USBB/ENUM/DEVICE"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/DRIVERS/USBB/ENUM/HOST"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/DRIVERS/USBB/ENUM"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/DRIVERS/USBB"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS/PREPROCESSOR"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS/LIBS/DSPLIB/INCLUDE"/>
 </option>
 <option id="avr32.c.compiler.option.flashvault.2146229293" name="Enable FlashVault support" superClass="avr32.c.compiler.option.flashvault" value="false" valueType="boolean"/>
 <option id="gnu.c.compiler.option.preprocessor.def.symbols.1944347745" name="Defined symbols (-D)" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols">
@@ -981,8 +981,8 @@
 <listOptionValue builtIn="false" value="dsp-at32ucr1-dspaccandsize_opt"/>
 </option>
 <option id="gnu.c.link.option.paths.915802500" name="Library search path (-L)" superClass="gnu.c.link.option.paths" valueType="libPaths">
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/LIBS/DSPLIB"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/LIBS/DSPLIB/AT32UCR1/GCC"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS/LIBS/DSPLIB"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS/LIBS/DSPLIB/AT32UCR1/GCC"/>
 </option>
 <option id="gnu.c.link.option.nostart.1470504227" name="Do not use standard start files (-nostartfiles)" superClass="gnu.c.link.option.nostart" value="true" valueType="boolean"/>
 <option id="avr32.c.linker.option.rodata-writable.1916537927" name="Put read-only data in writable data section" superClass="avr32.c.linker.option.rodata-writable" value="false" valueType="boolean"/>
@@ -1006,8 +1006,8 @@
 <option id="avr32.both.preprocessor.option.mcu.1682235707" name="Microcontroller Unit" superClass="avr32.both.preprocessor.option.mcu" value="-mpart=uc3b0256" valueType="string"/>
 <option id="avr32.both.preprocessor.option.paths.948298023" name="Include paths (-I)" superClass="avr32.both.preprocessor.option.paths" valueType="includePath">
 <listOptionValue builtIn="false" value="../src"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/PREPROCESSOR"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS/PREPROCESSOR"/>
 </option>
 <inputType id="avr32.managedbuild.tool.gnu.preprocessor.input.2106563294" superClass="avr32.managedbuild.tool.gnu.preprocessor.input"/>
 </tool>
@@ -1874,15 +1874,15 @@
 <listOptionValue builtIn="false" value="../src/opendv"/>
 <listOptionValue builtIn="false" value="../src/transceiver"/>
 <listOptionValue builtIn="false" value="../src/ambeaddon"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/INTC"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB/ENUM/DEVICE"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB/ENUM/HOST"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB/ENUM"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/DRIVERS/USBB"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/PREPROCESSOR"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/LIBS/DSPLIB/INCLUDE"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/DRIVERS/INTC"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/DRIVERS/USBB/ENUM/DEVICE"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/DRIVERS/USBB/ENUM/HOST"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/DRIVERS/USBB/ENUM"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/DRIVERS/USBB"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS/PREPROCESSOR"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS/LIBS/DSPLIB/INCLUDE"/>
 </option>
 <option id="avr32.c.compiler.option.flashvault.172668281" name="Enable FlashVault support" superClass="avr32.c.compiler.option.flashvault" value="false" valueType="boolean"/>
 <option id="gnu.c.compiler.option.preprocessor.def.symbols.405934353" name="Defined symbols (-D)" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols">
@@ -1901,8 +1901,8 @@
 <listOptionValue builtIn="false" value="dsp-at32ucr1-dspaccandsize_opt"/>
 </option>
 <option id="gnu.c.link.option.paths.336501584" name="Library search path (-L)" superClass="gnu.c.link.option.paths" valueType="libPaths">
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/LIBS/DSPLIB"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/LIBS/DSPLIB/AT32UCR1/GCC"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS/LIBS/DSPLIB"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS/LIBS/DSPLIB/AT32UCR1/GCC"/>
 </option>
 <option id="gnu.c.link.option.nostart.120590688" name="Do not use standard start files (-nostartfiles)" superClass="gnu.c.link.option.nostart" value="true" valueType="boolean"/>
 <option id="avr32.c.linker.option.rodata-writable.1899748930" name="Put read-only data in writable data section" superClass="avr32.c.linker.option.rodata-writable" value="false" valueType="boolean"/>
@@ -1926,8 +1926,8 @@
 <option id="avr32.both.preprocessor.option.mcu.472455134" name="Microcontroller Unit" superClass="avr32.both.preprocessor.option.mcu" value="-mpart=uc3b0256" valueType="string"/>
 <option id="avr32.both.preprocessor.option.paths.103054756" name="Include paths (-I)" superClass="avr32.both.preprocessor.option.paths" valueType="includePath">
 <listOptionValue builtIn="false" value="../src"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS"/>
-<listOptionValue builtIn="false" value="../src/FRAMEWORK/UTILS/PREPROCESSOR"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS"/>
+<listOptionValue builtIn="false" value="../src/SOFTWARE_FRAMEWORK/UTILS/PREPROCESSOR"/>
 </option>
 <inputType id="avr32.managedbuild.tool.gnu.preprocessor.input.94043780" superClass="avr32.managedbuild.tool.gnu.preprocessor.input"/>
 </tool>
